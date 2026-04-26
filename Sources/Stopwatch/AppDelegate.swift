@@ -16,6 +16,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var periodAchievedToday: [Period: Bool] = [:]
     private var dailyAchievedToday: Bool = false
     private var achievementCheckDayKey: String = ""
+    private var allowTermination: Bool = false
 
     private static let idleThresholdOptions: [(label: String, seconds: Int)] = [
         ("Disabled", 0),
@@ -67,6 +68,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         historyStore.flush()
         idleMonitor.stop()
         GlobalHotkey.shared.unregister()
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        return allowTermination ? .terminateNow : .terminateCancel
+    }
+
+    @objc private func quitFromMenu() {
+        allowTermination = true
+        NSApp.terminate(nil)
     }
 
     private func tick() {
@@ -244,11 +254,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
-        menu.addItem(NSMenuItem(
+        let quitItem = NSMenuItem(
             title: "Quit Stopwatch",
-            action: #selector(NSApplication.terminate(_:)),
-            keyEquivalent: "q"
-        ))
+            action: #selector(quitFromMenu),
+            keyEquivalent: ""
+        )
+        quitItem.target = self
+        menu.addItem(quitItem)
 
         return menu
     }
