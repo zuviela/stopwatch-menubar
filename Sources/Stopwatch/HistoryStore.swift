@@ -1,6 +1,8 @@
 import Foundation
 
 final class HistoryStore {
+    static let dayShiftHour: Int = 4
+
     private static let dayFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
@@ -8,6 +10,16 @@ final class HistoryStore {
         f.locale = Locale(identifier: "en_US_POSIX")
         return f
     }()
+
+    static func dayKey(for date: Date) -> String {
+        let cal = Calendar.current
+        let hour = cal.component(.hour, from: date)
+        if hour < dayShiftHour {
+            let shifted = cal.date(byAdding: .day, value: -1, to: date) ?? date
+            return dayFormatter.string(from: shifted)
+        }
+        return dayFormatter.string(from: date)
+    }
 
     private var entries: [String: [Int]] = [:]
     private let storeURL: URL
@@ -50,12 +62,12 @@ final class HistoryStore {
     }
 
     func seconds(forDay date: Date) -> Int {
-        let key = Self.dayFormatter.string(from: date)
+        let key = Self.dayKey(for: date)
         return (entries[key] ?? []).reduce(0, +)
     }
 
     func seconds(forPeriod period: Period, on date: Date) -> Int {
-        let key = Self.dayFormatter.string(from: date)
+        let key = Self.dayKey(for: date)
         guard let arr = entries[key], arr.count == 24 else { return 0 }
         var total = 0
         for hour in 0..<24 where period.contains(hour: hour) {
@@ -68,6 +80,7 @@ final class HistoryStore {
         let cal = Calendar.current
         var components = cal.dateComponents([.year, .month], from: month)
         components.day = 1
+        components.hour = 12
         guard let monthStart = cal.date(from: components),
               let range = cal.range(of: .day, in: .month, for: monthStart) else {
             return [:]
@@ -92,7 +105,7 @@ final class HistoryStore {
     }
 
     private func bucket(for date: Date) -> (String, Int) {
-        let key = Self.dayFormatter.string(from: date)
+        let key = Self.dayKey(for: date)
         let hour = Calendar.current.component(.hour, from: date)
         return (key, hour)
     }

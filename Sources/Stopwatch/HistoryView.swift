@@ -89,6 +89,7 @@ struct HistoryView: View {
             cells.append(MonthCell(id: "blank-lead-\(i)", date: nil, day: nil, seconds: 0))
         }
         var components = cal.dateComponents([.year, .month], from: displayedMonth)
+        components.hour = 12
         for day in range {
             components.day = day
             guard let date = cal.date(from: components) else { continue }

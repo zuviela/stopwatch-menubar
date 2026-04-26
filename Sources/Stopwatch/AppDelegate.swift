@@ -27,13 +27,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ("1 hour", 3600)
     ]
 
-    private static let dayKeyFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.calendar = Calendar(identifier: .gregorian)
-        f.locale = Locale(identifier: "en_US_POSIX")
-        return f
-    }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -85,7 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func seedAchievementState() {
         let today = Date()
-        achievementCheckDayKey = Self.dayKeyFormatter.string(from: today)
+        achievementCheckDayKey = HistoryStore.dayKey(for: today)
         for period in Period.allCases {
             let target = Preferences.shared.targetMinutes(for: period) * 60
             let elapsed = historyStore.seconds(forPeriod: period, on: today)
@@ -98,7 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func checkForAchievement() {
         let today = Date()
-        let dayKey = Self.dayKeyFormatter.string(from: today)
+        let dayKey = HistoryStore.dayKey(for: today)
         if dayKey != achievementCheckDayKey {
             achievementCheckDayKey = dayKey
             periodAchievedToday = [:]
