@@ -22,14 +22,38 @@ struct TargetsView: View {
         _nightMinutes = State(initialValue: n % 60)
     }
 
+    private var dailyTotalMinutes: Int {
+        morningHours * 60 + morningMinutes
+            + afternoonHours * 60 + afternoonMinutes
+            + nightHours * 60 + nightMinutes
+    }
+
+    private var dailyTotalLabel: String {
+        let h = dailyTotalMinutes / 60
+        let m = dailyTotalMinutes % 60
+        if h > 0 { return String(format: "%dh %02dm", h, m) }
+        return "\(m)m"
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Daily Targets by Period")
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Daily Targets")
                 .font(.headline)
-            Text("Set 0 for any period to disable its target. Periods are 5 AM–noon, noon–6 PM, and 6 PM–5 AM.")
+            Text("Set 0 to disable a period. The daily total auto-sums the three periods — when met it fires a big firework; each period fires a smaller one. Periods are 5 AM–noon, noon–6 PM, and 6 PM–5 AM.")
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            HStack {
+                Text("Daily Total (auto)")
+                    .frame(width: 152, alignment: .leading)
+                Text(dailyTotalLabel)
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundColor(.secondary)
+                Spacer()
+            }
+
+            Divider()
 
             row(
                 label: "Morning",
@@ -53,7 +77,7 @@ struct TargetsView: View {
             Spacer(minLength: 0)
         }
         .padding(20)
-        .frame(width: 380, height: 280)
+        .frame(width: 420, height: 340)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 

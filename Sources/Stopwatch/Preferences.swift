@@ -39,6 +39,10 @@ final class Preferences {
         defaults.set(max(0, minutes), forKey: targetKey(period))
     }
 
+    var dailyTargetMinutes: Int {
+        Period.allCases.reduce(0) { $0 + targetMinutes(for: $1) }
+    }
+
     private func targetKey(_ period: Period) -> String {
         "target_\(period.rawValue)_minutes"
     }

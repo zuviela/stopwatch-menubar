@@ -7,10 +7,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let historyStore = HistoryStore()
     private lazy var historyWindowController = HistoryWindowController(store: historyStore)
     private lazy var targetsWindowController = TargetsWindowController()
+    private let fireworkController = FireworkWindowController()
     private let idleMonitor = IdleMonitor(threshold: 600, pollInterval: 30)
     private var refreshTimer: Timer?
     private var pendingToggle: DispatchWorkItem?
     private var idleAlertShown = false
+    private var periodAchievedToday: [Period: Bool] = [:]
+    private var dailyAchievedToday: Bool = false
+    private var achievementCheckDayKey: String = ""
+
+    private static let dayKeyFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.calendar = Calendar(identifier: .gregorian)
+        f.locale = Locale(identifier: "en_US_POSIX")
+        return f
+    }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -38,6 +50,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] in
             self?.toggleFromHotkey()
         }
+
+        seedAchievementState()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            self?.fireFirework(style: .grand)
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -49,8 +67,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func tick() {
         if stopwatch.isRunning {
             historyStore.recordSecond(at: Date())
+            checkForAchievement()
         }
         refreshLabel()
+    }
+
+    private func seedAchievementState() {
+        let today = Date()
+        achievementCheckDayKey = Self.dayKeyFormatter.string(from: today)
+        for period in Period.allCases {
+            let target = Preferences.shared.targetMinutes(for: period) * 60
+            let elapsed = historyStore.seconds(forPeriod: period, on: today)
+            periodAchievedToday[period] = target > 0 && elapsed >= target
+        }
+        let dailyTarget = Preferences.shared.dailyTargetMinutes * 60
+        let dailyElapsed = historyStore.seconds(forDay: today)
+        dailyAchievedToday = dailyTarget > 0 && dailyElapsed >= dailyTarget
+    }
+
+    private func checkForAchievement() {
+        let today = Date()
+        let dayKey = Self.dayKeyFormatter.string(from: today)
+        if dayKey != achievementCheckDayKey {
+            achievementCheckDayKey = dayKey
+            periodAchievedToday = [:]
+            dailyAchievedToday = false
+        }
+
+        let period = Period.current(at: today)
+        let periodTarget = Preferences.shared.targetMinutes(for: period) * 60
+        if periodTarget > 0 {
+            let elapsed = historyStore.seconds(forPeriod: period, on: today)
+            if !(periodAchievedToday[period] ?? false) && elapsed >= periodTarget {
+                periodAchievedToday[period] = true
+                fireFirework(style: .small)
+            }
+        }
+
+        let dailyTarget = Preferences.shared.dailyTargetMinutes * 60
+        if dailyTarget > 0 && !dailyAchievedToday {
+            let elapsedDay = historyStore.seconds(forDay: today)
+            if elapsedDay >= dailyTarget {
+                dailyAchievedToday = true
+                fireFirework(style: .grand)
+            }
+        }
+    }
+
+    private func fireFirework(style: FireworkStyle) {
+        guard let button = statusItem.button,
+              let buttonWindow = button.window else { return }
+        let anchor = buttonWindow.convertToScreen(button.bounds)
+        fireworkController.play(style: style, near: anchor)
     }
 
     @objc private func handleClick(_ sender: NSStatusBarButton) {
@@ -72,6 +140,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.stopwatch.toggle()
+            self.playToggleSound()
             self.refreshLabel()
             self.pendingToggle = nil
         }
@@ -86,7 +155,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pendingToggle?.cancel()
         pendingToggle = nil
         stopwatch.toggle()
+        playToggleSound()
         refreshLabel()
+    }
+
+    private func playToggleSound() {
+        NSSound(named: "Glass")?.play()
     }
 
     private func handleIdle(seconds idleSeconds: TimeInterval) {
@@ -154,6 +228,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         historyItem.target = self
         menu.addItem(historyItem)
 
+        menu.addItem(buildTestFireworksItem())
+
         menu.addItem(NSMenuItem.separator())
 
         menu.addItem(NSMenuItem(
@@ -164,6 +240,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         return menu
     }
+
+    private func buildTestFireworksItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Test Fireworks", action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: "Test Fireworks")
+        submenu.autoenablesItems = false
+
+        let small = NSMenuItem(title: "Period (small)", action: #selector(testFireworkSmall), keyEquivalent: "")
+        small.target = self
+        submenu.addItem(small)
+
+        let grand = NSMenuItem(title: "Daily Goal (big)", action: #selector(testFireworkGrand), keyEquivalent: "")
+        grand.target = self
+        submenu.addItem(grand)
+
+        item.submenu = submenu
+        return item
+    }
+
+    @objc private func testFireworkSmall() { fireFirework(style: .small) }
+    @objc private func testFireworkGrand() { fireFirework(style: .grand) }
 
     private func buildDisplaySubmenuItem() -> NSMenuItem {
         let displayItem = NSMenuItem(title: "Display", action: nil, keyEquivalent: "")
@@ -190,6 +286,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let submenu = NSMenu(title: "Targets")
         submenu.autoenablesItems = false
         let today = Date()
+
+        let dailyMin = Preferences.shared.dailyTargetMinutes
+        let dailyElapsed = historyStore.seconds(forDay: today)
+        let dailyTitle: String
+        if dailyMin == 0 {
+            dailyTitle = "Daily Total:  \(formatDurationCompact(dailyElapsed))  /  not set"
+        } else {
+            let dailySec = dailyMin * 60
+            let mark = dailyElapsed >= dailySec ? "✓" : "✗"
+            dailyTitle = "Daily Total:  \(formatDurationCompact(dailyElapsed))  /  \(formatDurationCompact(dailySec))  \(mark)"
+        }
+        let dailyItem = NSMenuItem(title: dailyTitle, action: nil, keyEquivalent: "")
+        dailyItem.isEnabled = false
+        submenu.addItem(dailyItem)
+
+        submenu.addItem(NSMenuItem.separator())
+
         for period in Period.allCases {
             let elapsed = historyStore.seconds(forPeriod: period, on: today)
             let targetMin = Preferences.shared.targetMinutes(for: period)
