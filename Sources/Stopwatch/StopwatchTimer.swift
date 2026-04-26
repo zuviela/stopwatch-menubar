@@ -38,6 +38,11 @@ final class StopwatchTimer {
         runningSince = nil
         lastCycleSeconds = nil
     }
+
+    func subtractElapsed(_ seconds: Int) {
+        let s = TimeInterval(max(0, seconds))
+        accumulated = max(0, accumulated - s)
+    }
 }
 
 func formatElapsed(_ seconds: Int, format: DisplayFormat) -> String {
@@ -50,4 +55,13 @@ func formatElapsed(_ seconds: Int, format: DisplayFormat) -> String {
     case .hms:
         return String(format: "%d:%02d:%02d", h, m, s)
     }
+}
+
+func formatDurationCompact(_ seconds: Int) -> String {
+    let h = seconds / 3600
+    let m = (seconds % 3600) / 60
+    if h > 0 {
+        return String(format: "%dh %02dm", h, m)
+    }
+    return "\(m)m"
 }

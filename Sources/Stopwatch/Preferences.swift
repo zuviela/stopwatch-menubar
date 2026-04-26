@@ -30,4 +30,16 @@ final class Preferences {
             defaults.set(newValue.rawValue, forKey: displayFormatKey)
         }
     }
+
+    func targetMinutes(for period: Period) -> Int {
+        defaults.integer(forKey: targetKey(period))
+    }
+
+    func setTargetMinutes(_ minutes: Int, for period: Period) {
+        defaults.set(max(0, minutes), forKey: targetKey(period))
+    }
+
+    private func targetKey(_ period: Period) -> String {
+        "target_\(period.rawValue)_minutes"
+    }
 }

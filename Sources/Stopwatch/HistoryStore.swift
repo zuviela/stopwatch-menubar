@@ -9,7 +9,7 @@ final class HistoryStore {
         return f
     }()
 
-    private var entries: [String: Int] = [:]
+    private var entries: [String: [Int]] = [:]
     private let storeURL: URL
     private var dirtySinceSave: Int = 0
     private let saveEvery: Int = 60
@@ -25,8 +25,23 @@ final class HistoryStore {
     }
 
     func recordSecond(at date: Date) {
-        let key = Self.dayFormatter.string(from: date)
-        entries[key, default: 0] += 1
+        let (key, hour) = bucket(for: date)
+        var arr = entries[key] ?? Array(repeating: 0, count: 24)
+        if arr.count != 24 { arr = Array(repeating: 0, count: 24) }
+        arr[hour] += 1
+        entries[key] = arr
+        dirtySinceSave += 1
+        if dirtySinceSave >= saveEvery {
+            save()
+            dirtySinceSave = 0
+        }
+    }
+
+    func subtractSecond(at date: Date) {
+        let (key, hour) = bucket(for: date)
+        guard var arr = entries[key], arr.count == 24, arr[hour] > 0 else { return }
+        arr[hour] -= 1
+        entries[key] = arr
         dirtySinceSave += 1
         if dirtySinceSave >= saveEvery {
             save()
@@ -35,7 +50,18 @@ final class HistoryStore {
     }
 
     func seconds(forDay date: Date) -> Int {
-        return entries[Self.dayFormatter.string(from: date)] ?? 0
+        let key = Self.dayFormatter.string(from: date)
+        return (entries[key] ?? []).reduce(0, +)
+    }
+
+    func seconds(forPeriod period: Period, on date: Date) -> Int {
+        let key = Self.dayFormatter.string(from: date)
+        guard let arr = entries[key], arr.count == 24 else { return 0 }
+        var total = 0
+        for hour in 0..<24 where period.contains(hour: hour) {
+            total += arr[hour]
+        }
+        return total
     }
 
     func entries(forMonth month: Date) -> [Date: Int] {
@@ -50,9 +76,9 @@ final class HistoryStore {
         for day in range {
             components.day = day
             guard let date = cal.date(from: components) else { continue }
-            let key = Self.dayFormatter.string(from: date)
-            if let value = entries[key], value > 0 {
-                result[date] = value
+            let total = seconds(forDay: date)
+            if total > 0 {
+                result[date] = total
             }
         }
         return result
@@ -65,12 +91,24 @@ final class HistoryStore {
         }
     }
 
+    private func bucket(for date: Date) -> (String, Int) {
+        let key = Self.dayFormatter.string(from: date)
+        let hour = Calendar.current.component(.hour, from: date)
+        return (key, hour)
+    }
+
     private func load() {
-        guard let data = try? Data(contentsOf: storeURL),
-              let decoded = try? JSONDecoder().decode([String: Int].self, from: data) else {
+        guard let data = try? Data(contentsOf: storeURL) else { return }
+        if let decoded = try? JSONDecoder().decode([String: [Int]].self, from: data) {
+            entries = decoded.compactMapValues { $0.count == 24 ? $0 : nil }
             return
         }
-        entries = decoded
+        if (try? JSONDecoder().decode([String: Int].self, from: data)) != nil {
+            FileHandle.standardError.write(
+                Data("Stopwatch: discarding pre-v3 per-day history (now per-hour).\n".utf8)
+            )
+            entries = [:]
+        }
     }
 
     private func save() {
