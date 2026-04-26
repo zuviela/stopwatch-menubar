@@ -3,29 +3,30 @@ import CoreGraphics
 import IOKit.pwr_mgt
 
 final class IdleMonitor {
-    var threshold: TimeInterval
-    var pollInterval: TimeInterval
-    var onIdle: ((TimeInterval) -> Void)?
+    var threshold: TimeInterval {
+        didSet { applyThresholdChange() }
+    }
+    var onIdle: (() -> Void)?
+    var onReturn: (() -> Void)?
 
     private var timer: Timer?
+    private var mode: Mode = .watchForIdle
+    private let idlePollInterval: TimeInterval = 30
+    private let returnPollInterval: TimeInterval = 2
+
+    enum Mode { case watchForIdle, watchForReturn }
 
     private static let displayKeepAwakeTypes: Set<String> = [
         "PreventUserIdleDisplaySleep",
         "NoDisplaySleepAssertion"
     ]
 
-    init(threshold: TimeInterval = 600, pollInterval: TimeInterval = 30) {
+    init(threshold: TimeInterval = 300) {
         self.threshold = threshold
-        self.pollInterval = pollInterval
     }
 
     func start() {
-        stop()
-        let t = Timer(timeInterval: pollInterval, repeats: true) { [weak self] _ in
-            self?.check()
-        }
-        RunLoop.main.add(t, forMode: .common)
-        timer = t
+        switchTo(.watchForIdle)
     }
 
     func stop() {
@@ -57,10 +58,43 @@ final class IdleMonitor {
         return false
     }
 
-    private func check() {
+    private func switchTo(_ newMode: Mode) {
+        timer?.invalidate()
+        mode = newMode
+        let interval = (newMode == .watchForIdle) ? idlePollInterval : returnPollInterval
+        let t = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+            self?.tick()
+        }
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
+    }
+
+    private func tick() {
+        switch mode {
+        case .watchForIdle: checkIdle()
+        case .watchForReturn: checkReturn()
+        }
+    }
+
+    private func checkIdle() {
+        guard threshold > 0 else { return }
         let idle = Self.currentIdleSeconds()
         guard idle >= threshold else { return }
         if Self.isDisplayKeptAwakeByOtherApp() { return }
-        onIdle?(idle)
+        onIdle?()
+        switchTo(.watchForReturn)
+    }
+
+    private func checkReturn() {
+        let idle = Self.currentIdleSeconds()
+        guard idle < 3 else { return }
+        onReturn?()
+        switchTo(.watchForIdle)
+    }
+
+    private func applyThresholdChange() {
+        if threshold == 0, mode == .watchForReturn {
+            switchTo(.watchForIdle)
+        }
     }
 }

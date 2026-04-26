@@ -8,13 +8,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var historyWindowController = HistoryWindowController(store: historyStore)
     private lazy var targetsWindowController = TargetsWindowController()
     private let fireworkController = FireworkWindowController()
-    private let idleMonitor = IdleMonitor(threshold: 600, pollInterval: 30)
+    private let idleMonitor = IdleMonitor()
+    private let returnPromptController = ReturnPromptController()
     private var refreshTimer: Timer?
     private var pendingToggle: DispatchWorkItem?
-    private var idleAlertShown = false
+    private var idlePauseTimestamp: Date?
     private var periodAchievedToday: [Period: Bool] = [:]
     private var dailyAchievedToday: Bool = false
     private var achievementCheckDayKey: String = ""
+
+    private static let idleThresholdOptions: [(label: String, seconds: Int)] = [
+        ("Disabled", 0),
+        ("1 minute", 60),
+        ("5 minutes", 300),
+        ("10 minutes", 600),
+        ("15 minutes", 900),
+        ("30 minutes", 1800),
+        ("1 hour", 3600)
+    ]
 
     private static let dayKeyFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -39,9 +50,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.tick()
         }
 
-        idleMonitor.onIdle = { [weak self] idle in
-            self?.handleIdle(seconds: idle)
-        }
+        idleMonitor.threshold = TimeInterval(Preferences.shared.idleThresholdSeconds)
+        idleMonitor.onIdle = { [weak self] in self?.handleIdleDetected() }
+        idleMonitor.onReturn = { [weak self] in self?.handleUserReturned() }
         idleMonitor.start()
 
         GlobalHotkey.shared.register(
@@ -132,6 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if event.clickCount >= 2 {
             pendingToggle?.cancel()
             pendingToggle = nil
+            cancelPendingIdleReturn()
             stopwatch.reset()
             refreshLabel()
             return
@@ -139,6 +151,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
+            self.cancelPendingIdleReturn()
             self.stopwatch.toggle()
             self.playToggleSound()
             self.refreshLabel()
@@ -151,9 +164,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
+    private func cancelPendingIdleReturn() {
+        if idlePauseTimestamp != nil {
+            idlePauseTimestamp = nil
+            returnPromptController.close()
+        }
+    }
+
     private func toggleFromHotkey() {
         pendingToggle?.cancel()
         pendingToggle = nil
+        cancelPendingIdleReturn()
         stopwatch.toggle()
         playToggleSound()
         refreshLabel()
@@ -163,35 +184,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSSound(named: "Glass")?.play()
     }
 
-    private func handleIdle(seconds idleSeconds: TimeInterval) {
-        guard !idleAlertShown, stopwatch.isRunning else { return }
-
-        let idleSecs = Int(idleSeconds)
-        idleAlertShown = true
-
+    private func handleIdleDetected() {
+        guard stopwatch.isRunning else { return }
+        idlePauseTimestamp = Date()
         stopwatch.toggle()
         refreshLabel()
+    }
 
-        let alert = NSAlert()
-        alert.messageText = "Stopwatch paused"
-        alert.informativeText = "No input detected for ~\(idleSecs / 60) min. Keep that time, or discard it?"
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "Keep")
-        alert.addButton(withTitle: "Discard")
+    private func handleUserReturned() {
+        guard let pauseTime = idlePauseTimestamp else { return }
+        let extraAway = Int(Date().timeIntervalSince(pauseTime))
+        idlePauseTimestamp = nil
+        guard extraAway > 0, let button = statusItem.button else { return }
 
-        NSApp.activate(ignoringOtherApps: true)
-        let response = alert.runModal()
-
-        if response == .alertSecondButtonReturn {
-            stopwatch.subtractElapsed(idleSecs)
-            let now = Date()
-            for i in 0..<idleSecs {
-                historyStore.subtractSecond(at: now.addingTimeInterval(-Double(i)))
+        returnPromptController.show(
+            extraAwaySeconds: extraAway,
+            relativeTo: button
+        ) { [weak self] keep in
+            guard let self else { return }
+            guard keep else { return }
+            self.stopwatch.addElapsed(extraAway)
+            for i in 0..<extraAway {
+                self.historyStore.recordSecond(at: pauseTime.addingTimeInterval(Double(i)))
             }
-            refreshLabel()
+            self.refreshLabel()
         }
-
-        idleAlertShown = false
     }
 
     private func showContextMenu() {
@@ -217,6 +234,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(buildDisplaySubmenuItem())
         menu.addItem(buildTargetsSubmenuItem())
+        menu.addItem(buildIdleThresholdSubmenuItem())
 
         menu.addItem(NSMenuItem.separator())
 
@@ -260,6 +278,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func testFireworkSmall() { fireFirework(style: .small) }
     @objc private func testFireworkGrand() { fireFirework(style: .grand) }
+
+    private func buildIdleThresholdSubmenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "Idle Pause After", action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: "Idle Pause After")
+        submenu.autoenablesItems = false
+        let current = Preferences.shared.idleThresholdSeconds
+        for (label, seconds) in Self.idleThresholdOptions {
+            let menuItem = NSMenuItem(
+                title: label,
+                action: #selector(setIdleThreshold(_:)),
+                keyEquivalent: ""
+            )
+            menuItem.target = self
+            menuItem.representedObject = seconds
+            menuItem.state = (seconds == current) ? .on : .off
+            submenu.addItem(menuItem)
+        }
+        item.submenu = submenu
+        return item
+    }
+
+    @objc private func setIdleThreshold(_ sender: NSMenuItem) {
+        guard let seconds = sender.representedObject as? Int else { return }
+        Preferences.shared.idleThresholdSeconds = seconds
+        idleMonitor.threshold = TimeInterval(seconds)
+        if seconds == 0 {
+            cancelPendingIdleReturn()
+        }
+    }
 
     private func buildDisplaySubmenuItem() -> NSMenuItem {
         let displayItem = NSMenuItem(title: "Display", action: nil, keyEquivalent: "")

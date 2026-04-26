@@ -43,6 +43,15 @@ final class Preferences {
         Period.allCases.reduce(0) { $0 + targetMinutes(for: $1) }
     }
 
+    var idleThresholdSeconds: Int {
+        get {
+            (defaults.object(forKey: "idleThresholdSeconds") as? Int) ?? 300
+        }
+        set {
+            defaults.set(max(0, newValue), forKey: "idleThresholdSeconds")
+        }
+    }
+
     private func targetKey(_ period: Period) -> String {
         "target_\(period.rawValue)_minutes"
     }

@@ -43,6 +43,10 @@ final class StopwatchTimer {
         let s = TimeInterval(max(0, seconds))
         accumulated = max(0, accumulated - s)
     }
+
+    func addElapsed(_ seconds: Int) {
+        accumulated += TimeInterval(max(0, seconds))
+    }
 }
 
 func formatElapsed(_ seconds: Int, format: DisplayFormat) -> String {
