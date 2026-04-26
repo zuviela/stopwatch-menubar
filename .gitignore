@@ -1,0 +1,6 @@
+.build/
+.swiftpm/
+Package.resolved
+Stopwatch.app/
+.DS_Store
+*.xcodeproj
