@@ -6,7 +6,7 @@ struct ReturnPromptView: View {
     let onChoice: (Bool) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             Text("Welcome back")
                 .font(.headline)
             Text("You stepped away for an extra **\(formatted)** after the timer paused.")
@@ -22,8 +22,11 @@ struct ReturnPromptView: View {
                 Button("Keep") { onChoice(true) }
                     .keyboardShortcut(.defaultAction)
             }
+            .padding(.top, 2)
         }
-        .padding(16)
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
         .frame(width: 280)
     }
 

@@ -11,7 +11,7 @@ final class IdleMonitor {
 
     private var timer: Timer?
     private var mode: Mode = .watchForIdle
-    private let idlePollInterval: TimeInterval = 30
+    private let idlePollInterval: TimeInterval = 5
     private let returnPollInterval: TimeInterval = 2
 
     enum Mode { case watchForIdle, watchForReturn }

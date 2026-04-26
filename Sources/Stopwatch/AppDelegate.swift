@@ -206,10 +206,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             relativeTo: button
         ) { [weak self] keep in
             guard let self else { return }
-            guard keep else { return }
-            self.stopwatch.addElapsed(extraAway)
-            for i in 0..<extraAway {
-                self.historyStore.recordSecond(at: pauseTime.addingTimeInterval(Double(i)))
+            if keep {
+                self.stopwatch.addElapsed(extraAway)
+                for i in 0..<extraAway {
+                    self.historyStore.recordSecond(at: pauseTime.addingTimeInterval(Double(i)))
+                }
+                if !self.stopwatch.isRunning {
+                    self.stopwatch.toggle()
+                    self.playToggleSound()
+                }
             }
             self.refreshLabel()
         }
