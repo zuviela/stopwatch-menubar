@@ -72,9 +72,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func buildContextMenu() -> NSMenu {
         let menu = NSMenu()
+        menu.autoenablesItems = false
+
+        let undoItem = NSMenuItem(
+            title: "Undo Reset",
+            action: #selector(undoReset),
+            keyEquivalent: "z"
+        )
+        undoItem.target = self
+        undoItem.isEnabled = stopwatch.canUndoReset
+        menu.addItem(undoItem)
+
+        menu.addItem(NSMenuItem.separator())
 
         let displayItem = NSMenuItem(title: "Display", action: nil, keyEquivalent: "")
         let displaySubmenu = NSMenu(title: "Display")
+        displaySubmenu.autoenablesItems = false
         let current = Preferences.shared.displayFormat
         for format in DisplayFormat.allCases {
             let item = NSMenuItem(
@@ -109,6 +122,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ))
 
         return menu
+    }
+
+    @objc private func undoReset() {
+        stopwatch.undoReset()
+        refreshLabel()
     }
 
     @objc private func setDisplayFormat(_ sender: NSMenuItem) {

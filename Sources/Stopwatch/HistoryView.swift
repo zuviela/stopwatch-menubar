@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct HistoryView: View {
@@ -16,6 +17,7 @@ struct HistoryView: View {
         }
         .padding(16)
         .frame(width: 380, height: 360)
+        .background(Color(nsColor: .windowBackgroundColor))
     }
 
     private var header: some View {
@@ -172,7 +174,7 @@ struct DayCell: View {
 
     private var background: Color {
         if cell.day == nil { return Color.clear }
-        if cell.seconds == 0 { return Color.gray.opacity(0.08) }
-        return Color.accentColor.opacity(0.18 + intensity * 0.55)
+        if cell.seconds == 0 { return Color.primary.opacity(0.06) }
+        return Color.accentColor.opacity(0.22 + intensity * 0.55)
     }
 }

@@ -3,8 +3,11 @@ import Foundation
 final class StopwatchTimer {
     private var accumulated: TimeInterval = 0
     private var runningSince: Date?
+    private var lastCycleSeconds: Int?
 
     var isRunning: Bool { runningSince != nil }
+
+    var canUndoReset: Bool { lastCycleSeconds != nil }
 
     var elapsedSeconds: Int {
         let live = runningSince.map { Date().timeIntervalSince($0) } ?? 0
@@ -21,8 +24,19 @@ final class StopwatchTimer {
     }
 
     func reset() {
+        let current = elapsedSeconds
+        if current > 0 {
+            lastCycleSeconds = current
+        }
         accumulated = 0
         runningSince = nil
+    }
+
+    func undoReset() {
+        guard let saved = lastCycleSeconds else { return }
+        accumulated = TimeInterval(saved)
+        runningSince = nil
+        lastCycleSeconds = nil
     }
 }
 
