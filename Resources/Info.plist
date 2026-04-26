@@ -8,6 +8,10 @@
     <string>Stopwatch</string>
     <key>CFBundleExecutable</key>
     <string>Stopwatch</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>com.henrique.stopwatch-menubar</string>
     <key>CFBundleVersion</key>

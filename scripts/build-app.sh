@@ -26,6 +26,13 @@ mkdir -p "${APP_DIR}/Contents/Resources"
 cp "${BIN_PATH}" "${APP_DIR}/Contents/MacOS/${BIN_NAME}"
 cp Resources/Info.plist "${APP_DIR}/Contents/Info.plist"
 
+if [[ ! -f Resources/AppIcon.icns ]]; then
+    echo "==> Generating AppIcon.icns"
+    ./scripts/make-icon.swift
+    iconutil -c icns -o Resources/AppIcon.icns Resources/AppIcon.iconset
+fi
+cp Resources/AppIcon.icns "${APP_DIR}/Contents/Resources/AppIcon.icns"
+
 chmod +x "${APP_DIR}/Contents/MacOS/${BIN_NAME}"
 
 echo "==> Built ${APP_DIR}"
