@@ -35,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.target = self
             button.action = #selector(handleClick(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+            button.imagePosition = .imageOnly
         }
 
         refreshLabel()
@@ -400,6 +401,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         case .hms:
             title = time
         }
-        statusItem.button?.title = title
+        statusItem.button?.title = ""
+        statusItem.button?.image = renderStatusImage(text: title)
+    }
+
+    private func renderStatusImage(text: String) -> NSImage {
+        let menuBarSize = NSFont.menuBarFont(ofSize: 0).pointSize
+        let font = NSFont.monospacedDigitSystemFont(ofSize: menuBarSize, weight: .regular)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: NSColor.labelColor
+        ]
+        let attributed = NSAttributedString(string: text, attributes: attributes)
+        let textSize = attributed.size()
+        let horizontalPadding: CGFloat = 7
+        let verticalPadding: CGFloat = 1.5
+        let cornerRadius: CGFloat = 4
+        let lineWidth: CGFloat = 1
+
+        let width = ceil(textSize.width + horizontalPadding * 2 + lineWidth)
+        let height = ceil(textSize.height + verticalPadding * 2 + lineWidth)
+        let imageSize = NSSize(width: width, height: height)
+
+        let image = NSImage(size: imageSize)
+        image.isTemplate = true
+        image.lockFocus()
+
+        let borderRect = NSRect(
+            x: lineWidth / 2,
+            y: lineWidth / 2,
+            width: imageSize.width - lineWidth,
+            height: imageSize.height - lineWidth
+        )
+        let path = NSBezierPath(
+            roundedRect: borderRect,
+            xRadius: cornerRadius,
+            yRadius: cornerRadius
+        )
+        NSColor.labelColor.setStroke()
+        path.lineWidth = lineWidth
+        path.stroke()
+
+        let textRect = NSRect(
+            x: (imageSize.width - textSize.width) / 2,
+            y: (imageSize.height - textSize.height) / 2,
+            width: textSize.width,
+            height: textSize.height
+        )
+        attributed.draw(in: textRect)
+
+        image.unlockFocus()
+        return image
     }
 }

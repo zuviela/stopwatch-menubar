@@ -55,9 +55,13 @@ func formatElapsed(_ seconds: Int, format: DisplayFormat) -> String {
     let s = seconds % 60
     switch format {
     case .hm:
-        return String(format: "%d:%02d", h, m)
+        return h > 0
+            ? String(format: "%02d:%02d", h, m)
+            : String(format: "%02d", m)
     case .hms:
-        return String(format: "%d:%02d:%02d", h, m, s)
+        return h > 0
+            ? String(format: "%02d:%02d:%02d", h, m, s)
+            : String(format: "%02d:%02d", m, s)
     }
 }
 
