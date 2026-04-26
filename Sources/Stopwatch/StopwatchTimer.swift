@@ -24,11 +24,16 @@ final class StopwatchTimer {
         accumulated = 0
         runningSince = nil
     }
+}
 
-    func formattedHHMM() -> String {
-        let total = elapsedSeconds
-        let hours = total / 3600
-        let minutes = (total % 3600) / 60
-        return String(format: "%d:%02d", hours, minutes)
+func formatElapsed(_ seconds: Int, format: DisplayFormat) -> String {
+    let h = seconds / 3600
+    let m = (seconds % 3600) / 60
+    let s = seconds % 60
+    switch format {
+    case .hm:
+        return String(format: "%d:%02d", h, m)
+    case .hms:
+        return String(format: "%d:%02d:%02d", h, m, s)
     }
 }
