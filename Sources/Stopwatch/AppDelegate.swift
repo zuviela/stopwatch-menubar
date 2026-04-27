@@ -17,6 +17,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var dailyAchievedToday: Bool = false
     private var achievementCheckDayKey: String = ""
     private var allowTermination: Bool = false
+    private var scrollMonitor: Any?
+    private var scrollAccumulator: Double = 0
+    private var lastScrollAt: Date?
+    private static let scrollThresholdTrackpad: Double = 40
+    private static let scrollThresholdMouse: Double = 10
+    private static let scrollIdleReset: TimeInterval = 0.5
+    private static let scrollAdjustSeconds: Int = 10
 
     private static let idleThresholdOptions: [(label: String, seconds: Int)] = [
         ("Disabled", 0),
@@ -58,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         seedAchievementState()
+        installScrollMonitor()
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             self?.fireFirework(style: .grand)
@@ -68,6 +76,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         historyStore.flush()
         idleMonitor.stop()
         GlobalHotkey.shared.unregister()
+        if let m = scrollMonitor { NSEvent.removeMonitor(m); scrollMonitor = nil }
+    }
+
+    private func installScrollMonitor() {
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
+            guard let self else { return event }
+            guard let button = self.statusItem.button, event.window === button.window else { return event }
+            guard event.modifierFlags.contains(.command) else { return event }
+            guard !self.stopwatch.isRunning else { return event }
+
+            let delta = event.scrollingDeltaY
+            if delta == 0 { return nil }
+
+            let threshold = event.hasPreciseScrollingDeltas
+                ? Self.scrollThresholdTrackpad
+                : Self.scrollThresholdMouse
+
+            let now = Date()
+            if let last = self.lastScrollAt, now.timeIntervalSince(last) > Self.scrollIdleReset {
+                self.scrollAccumulator = 0
+            }
+            self.lastScrollAt = now
+            self.scrollAccumulator += delta
+
+            var changed = false
+            while self.scrollAccumulator >= threshold {
+                self.stopwatch.addElapsed(Self.scrollAdjustSeconds)
+                self.scrollAccumulator -= threshold
+                changed = true
+            }
+            while self.scrollAccumulator <= -threshold {
+                self.stopwatch.subtractElapsed(Self.scrollAdjustSeconds)
+                self.scrollAccumulator += threshold
+                changed = true
+            }
+            if changed { self.refreshLabel() }
+            return nil
+        }
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
