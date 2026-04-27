@@ -85,11 +85,12 @@ final class HistoryStore {
 
     func periodBreakdown(on date: Date) -> [Period: PeriodBreakdown] {
         let order: [Period] = [.morning, .afternoon, .night]
+        let dayKey = Self.dayKey(for: date)
         var result: [Period: PeriodBreakdown] = [:]
         var carry = 0
         for period in order {
             let raw = seconds(forPeriod: period, on: date)
-            let target = Preferences.shared.targetMinutes(for: period) * 60
+            let target = Preferences.shared.effectiveTargetMinutes(for: period, on: dayKey) * 60
             let available = raw + carry
             let carryOut: Int
             if target > 0 && available > target {

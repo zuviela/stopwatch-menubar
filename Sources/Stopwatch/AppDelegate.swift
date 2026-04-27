@@ -8,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let historyStore = HistoryStore()
     private lazy var historyWindowController = HistoryWindowController(store: historyStore)
     private lazy var targetsWindowController = TargetsWindowController()
+    private let dailyGoalsPromptController = DailyGoalsPromptController()
     private let fireworkController = FireworkWindowController()
     private let idleMonitor = IdleMonitor()
     private let returnPromptController = ReturnPromptController()
@@ -129,23 +130,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func tick() {
         if stopwatch.isRunning {
-            historyStore.recordSecond(at: Date())
+            let now = Date()
+            ensureGoalsLockedForRunningDay(at: now)
+            historyStore.recordSecond(at: now)
             checkForAchievement()
             stopwatch.saveState()
         }
         refreshLabel()
     }
 
+    private func ensureGoalsLockedForRunningDay(at date: Date) {
+        let dayKey = HistoryStore.dayKey(for: date)
+        guard !Preferences.shared.goalsAreLocked(for: dayKey) else { return }
+        let goals: [Period: Int] = [
+            .morning: Preferences.shared.targetMinutes(for: .morning),
+            .afternoon: Preferences.shared.targetMinutes(for: .afternoon),
+            .night: Preferences.shared.targetMinutes(for: .night)
+        ]
+        Preferences.shared.lockGoals(goals, for: dayKey)
+    }
+
     private func seedAchievementState() {
         let today = Date()
-        achievementCheckDayKey = HistoryStore.dayKey(for: today)
+        let dayKey = HistoryStore.dayKey(for: today)
+        achievementCheckDayKey = dayKey
         let breakdown = historyStore.periodBreakdown(on: today)
         for period in Period.allCases {
-            let target = Preferences.shared.targetMinutes(for: period) * 60
+            let target = Preferences.shared.effectiveTargetMinutes(for: period, on: dayKey) * 60
             let effective = breakdown[period]?.effective ?? 0
             periodAchievedToday[period] = target > 0 && effective >= target
         }
-        let dailyTarget = Preferences.shared.dailyTargetMinutes * 60
+        let dailyTarget = Preferences.shared.effectiveDailyTargetMinutes(on: dayKey) * 60
         let dailyElapsed = historyStore.seconds(forDay: today)
         dailyAchievedToday = dailyTarget > 0 && dailyElapsed >= dailyTarget
     }
@@ -161,7 +176,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let breakdown = historyStore.periodBreakdown(on: today)
         for period in Period.allCases {
-            let periodTarget = Preferences.shared.targetMinutes(for: period) * 60
+            let periodTarget = Preferences.shared.effectiveTargetMinutes(for: period, on: dayKey) * 60
             guard periodTarget > 0, !(periodAchievedToday[period] ?? false) else { continue }
             let effective = breakdown[period]?.effective ?? 0
             if effective >= periodTarget {
@@ -170,7 +185,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        let dailyTarget = Preferences.shared.dailyTargetMinutes * 60
+        let dailyTarget = Preferences.shared.effectiveDailyTargetMinutes(on: dayKey) * 60
         if dailyTarget > 0 && !dailyAchievedToday {
             let elapsedDay = historyStore.seconds(forDay: today)
             if elapsedDay >= dailyTarget {
@@ -207,15 +222,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.cancelPendingIdleReturn()
-            self.stopwatch.toggle()
-            self.playToggleSound()
-            self.refreshLabel()
+            self.attemptToggle()
             self.pendingToggle = nil
         }
         pendingToggle = work
         DispatchQueue.main.asyncAfter(
             deadline: .now() + NSEvent.doubleClickInterval,
             execute: work
+        )
+    }
+
+    private func attemptToggle() {
+        if !stopwatch.isRunning {
+            let dayKey = HistoryStore.dayKey(for: Date())
+            if !Preferences.shared.goalsAreLocked(for: dayKey) {
+                promptForDailyGoals(dayKey: dayKey)
+                return
+            }
+        }
+        stopwatch.toggle()
+        playToggleSound()
+        refreshLabel()
+    }
+
+    private func promptForDailyGoals(dayKey: String) {
+        let prefill: [Period: Int] = [
+            .morning: Preferences.shared.targetMinutes(for: .morning),
+            .afternoon: Preferences.shared.targetMinutes(for: .afternoon),
+            .night: Preferences.shared.targetMinutes(for: .night)
+        ]
+        dailyGoalsPromptController.show(
+            prefill: prefill,
+            dayLabel: "today",
+            onConfirm: { [weak self] goals in
+                guard let self else { return }
+                Preferences.shared.lockGoals(goals, for: dayKey)
+                self.seedAchievementState()
+                self.stopwatch.toggle()
+                self.playToggleSound()
+                self.refreshLabel()
+            },
+            onCancel: { }
         )
     }
 
@@ -230,9 +277,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         pendingToggle?.cancel()
         pendingToggle = nil
         cancelPendingIdleReturn()
-        stopwatch.toggle()
-        playToggleSound()
-        refreshLabel()
+        attemptToggle()
     }
 
     private func playToggleSound() {
@@ -423,16 +468,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let submenu = NSMenu(title: "Targets")
         submenu.autoenablesItems = false
         let today = Date()
+        let dayKey = HistoryStore.dayKey(for: today)
+        let isLocked = Preferences.shared.goalsAreLocked(for: dayKey)
 
-        let dailyMin = Preferences.shared.dailyTargetMinutes
+        let dailyMin = Preferences.shared.effectiveDailyTargetMinutes(on: dayKey)
         let dailyElapsed = historyStore.seconds(forDay: today)
+        let lockSuffix = isLocked ? "  (locked)" : ""
         let dailyTitle: String
         if dailyMin == 0 {
-            dailyTitle = "Daily Total:  \(formatDurationCompact(dailyElapsed))  /  not set"
+            dailyTitle = "Daily Total:  \(formatDurationCompact(dailyElapsed))  /  not set\(lockSuffix)"
         } else {
             let dailySec = dailyMin * 60
             let mark = dailyElapsed >= dailySec ? "✓" : "✗"
-            dailyTitle = "Daily Total:  \(formatDurationCompact(dailyElapsed))  /  \(formatDurationCompact(dailySec))  \(mark)"
+            dailyTitle = "Daily Total:  \(formatDurationCompact(dailyElapsed))  /  \(formatDurationCompact(dailySec))  \(mark)\(lockSuffix)"
         }
         let dailyItem = NSMenuItem(title: dailyTitle, action: nil, keyEquivalent: "")
         dailyItem.isEnabled = false
@@ -443,7 +491,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let breakdown = historyStore.periodBreakdown(on: today)
         for period in Period.allCases {
             let b = breakdown[period] ?? PeriodBreakdown(raw: 0, effective: 0, carryIn: 0, carryOut: 0)
-            let targetMin = Preferences.shared.targetMinutes(for: period)
+            let targetMin = Preferences.shared.effectiveTargetMinutes(for: period, on: dayKey)
             let targetSec = targetMin * 60
             let leftArrow = b.carryIn > 0 ? "← " : ""
             let rightArrow = b.carryOut > 0 ? " →" : ""
@@ -460,8 +508,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             submenu.addItem(item)
         }
         submenu.addItem(NSMenuItem.separator())
+        let setTitle = isLocked ? "Set Targets… (today locked, edits apply tomorrow)" : "Set Targets…"
         let setItem = NSMenuItem(
-            title: "Set Targets…",
+            title: setTitle,
             action: #selector(showTargets),
             keyEquivalent: ""
         )

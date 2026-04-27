@@ -35,6 +35,22 @@ struct TargetsView: View {
         return "\(m)m"
     }
 
+    private var todayLockBannerText: String? {
+        let dayKey = HistoryStore.dayKey(for: Date())
+        guard let locked = Preferences.shared.lockedGoals(for: dayKey) else { return nil }
+        func fmt(_ minutes: Int) -> String {
+            let h = minutes / 60
+            let m = minutes % 60
+            if h > 0 && m > 0 { return "\(h)h\(m)m" }
+            if h > 0 { return "\(h)h" }
+            return "\(m)m"
+        }
+        let m = locked[.morning] ?? 0
+        let a = locked[.afternoon] ?? 0
+        let n = locked[.night] ?? 0
+        return "Today is locked: Morning \(fmt(m)) · Afternoon \(fmt(a)) · Night \(fmt(n)). Changes below apply on your next fresh day."
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("Daily Targets")
@@ -43,6 +59,17 @@ struct TargetsView: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            if let banner = todayLockBannerText {
+                Text(banner)
+                    .font(.caption)
+                    .foregroundColor(.primary)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(nsColor: .controlBackgroundColor))
+                    .cornerRadius(6)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             HStack {
                 Text("Daily Total (auto)")
