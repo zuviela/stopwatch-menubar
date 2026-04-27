@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>Stopwatch</string>
+    <string>Tally</string>
     <key>CFBundleDisplayName</key>
-    <string>Stopwatch</string>
+    <string>Tally</string>
     <key>CFBundleExecutable</key>
-    <string>Stopwatch</string>
+    <string>Tally</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIconName</key>

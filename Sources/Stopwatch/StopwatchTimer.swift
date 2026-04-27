@@ -1,9 +1,16 @@
 import Foundation
 
 final class StopwatchTimer {
+    private static let elapsedKey = "stopwatch.savedElapsedSeconds"
+    private static let lastCycleKey = "stopwatch.savedLastCycleSeconds"
+
     private var accumulated: TimeInterval = 0
     private var runningSince: Date?
     private var lastCycleSeconds: Int?
+
+    init() {
+        loadState()
+    }
 
     var isRunning: Bool { runningSince != nil }
 
@@ -21,6 +28,7 @@ final class StopwatchTimer {
         } else {
             runningSince = Date()
         }
+        saveState()
     }
 
     func reset() {
@@ -30,6 +38,7 @@ final class StopwatchTimer {
         }
         accumulated = 0
         runningSince = nil
+        saveState()
     }
 
     func undoReset() {
@@ -37,15 +46,37 @@ final class StopwatchTimer {
         accumulated = TimeInterval(saved)
         runningSince = nil
         lastCycleSeconds = nil
+        saveState()
     }
 
     func subtractElapsed(_ seconds: Int) {
         let s = TimeInterval(max(0, seconds))
         accumulated = max(0, accumulated - s)
+        saveState()
     }
 
     func addElapsed(_ seconds: Int) {
         accumulated += TimeInterval(max(0, seconds))
+        saveState()
+    }
+
+    func saveState() {
+        let defaults = UserDefaults.standard
+        defaults.set(elapsedSeconds, forKey: Self.elapsedKey)
+        if let last = lastCycleSeconds {
+            defaults.set(last, forKey: Self.lastCycleKey)
+        } else {
+            defaults.removeObject(forKey: Self.lastCycleKey)
+        }
+    }
+
+    private func loadState() {
+        let defaults = UserDefaults.standard
+        let saved = defaults.integer(forKey: Self.elapsedKey)
+        accumulated = TimeInterval(max(0, saved))
+        if defaults.object(forKey: Self.lastCycleKey) != nil {
+            lastCycleSeconds = defaults.integer(forKey: Self.lastCycleKey)
+        }
     }
 }
 

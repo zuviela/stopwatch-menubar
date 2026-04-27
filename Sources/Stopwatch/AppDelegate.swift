@@ -1,5 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
+import ServiceManagement
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
@@ -73,6 +74,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        stopwatch.saveState()
         historyStore.flush()
         idleMonitor.stop()
         GlobalHotkey.shared.unregister()
@@ -129,6 +131,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if stopwatch.isRunning {
             historyStore.recordSecond(at: Date())
             checkForAchievement()
+            stopwatch.saveState()
         }
         refreshLabel()
     }
@@ -305,8 +308,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
+        menu.addItem(buildLaunchAtLoginItem())
+
+        menu.addItem(NSMenuItem.separator())
+
         let quitItem = NSMenuItem(
-            title: "Quit Stopwatch",
+            title: "Quit Tally",
             action: #selector(quitFromMenu),
             keyEquivalent: ""
         )
@@ -314,6 +321,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(quitItem)
 
         return menu
+    }
+
+    private func buildLaunchAtLoginItem() -> NSMenuItem {
+        let item = NSMenuItem(
+            title: "Launch at Login",
+            action: #selector(toggleLaunchAtLogin),
+            keyEquivalent: ""
+        )
+        item.target = self
+        item.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
+        return item
+    }
+
+    @objc private func toggleLaunchAtLogin() {
+        let service = SMAppService.mainApp
+        do {
+            if service.status == .enabled {
+                try service.unregister()
+            } else {
+                try service.register()
+            }
+        } catch {
+            NSLog("Tally: launch-at-login toggle failed: \(error)")
+        }
     }
 
     private func buildTestFireworksItem() -> NSMenuItem {

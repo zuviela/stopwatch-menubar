@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "Stopwatch",
+    name: "Tally",
     platforms: [.macOS(.v14)],
     targets: [
         .executableTarget(
-            name: "Stopwatch",
+            name: "Tally",
             path: "Sources/Stopwatch"
         )
     ]

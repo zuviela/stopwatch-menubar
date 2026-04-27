@@ -1,7 +1,7 @@
 .build/
 .swiftpm/
 Package.resolved
-Stopwatch.app/
+Tally.app/
 .DS_Store
 *.xcodeproj
 Resources/AppIcon.iconset/
