@@ -139,10 +139,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func seedAchievementState() {
         let today = Date()
         achievementCheckDayKey = HistoryStore.dayKey(for: today)
+        let breakdown = historyStore.periodBreakdown(on: today)
         for period in Period.allCases {
             let target = Preferences.shared.targetMinutes(for: period) * 60
-            let elapsed = historyStore.seconds(forPeriod: period, on: today)
-            periodAchievedToday[period] = target > 0 && elapsed >= target
+            let effective = breakdown[period]?.effective ?? 0
+            periodAchievedToday[period] = target > 0 && effective >= target
         }
         let dailyTarget = Preferences.shared.dailyTargetMinutes * 60
         let dailyElapsed = historyStore.seconds(forDay: today)
@@ -158,11 +159,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             dailyAchievedToday = false
         }
 
-        let period = Period.current(at: today)
-        let periodTarget = Preferences.shared.targetMinutes(for: period) * 60
-        if periodTarget > 0 {
-            let elapsed = historyStore.seconds(forPeriod: period, on: today)
-            if !(periodAchievedToday[period] ?? false) && elapsed >= periodTarget {
+        let breakdown = historyStore.periodBreakdown(on: today)
+        for period in Period.allCases {
+            let periodTarget = Preferences.shared.targetMinutes(for: period) * 60
+            guard periodTarget > 0, !(periodAchievedToday[period] ?? false) else { continue }
+            let effective = breakdown[period]?.effective ?? 0
+            if effective >= periodTarget {
                 periodAchievedToday[period] = true
                 fireFirework(style: .small)
             }
@@ -438,16 +440,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         submenu.addItem(NSMenuItem.separator())
 
+        let breakdown = historyStore.periodBreakdown(on: today)
         for period in Period.allCases {
-            let elapsed = historyStore.seconds(forPeriod: period, on: today)
+            let b = breakdown[period] ?? PeriodBreakdown(raw: 0, effective: 0, carryIn: 0, carryOut: 0)
             let targetMin = Preferences.shared.targetMinutes(for: period)
             let targetSec = targetMin * 60
+            let leftArrow = b.carryIn > 0 ? "← " : ""
+            let rightArrow = b.carryOut > 0 ? " →" : ""
+            let timeStr = "\(leftArrow)\(formatDurationCompact(b.raw))\(rightArrow)"
             let title: String
             if targetMin == 0 {
-                title = "\(period.label):  \(formatDurationCompact(elapsed))  /  not set"
+                title = "\(period.label):  \(timeStr)  /  not set"
             } else {
-                let mark = elapsed >= targetSec ? "✓" : "✗"
-                title = "\(period.label):  \(formatDurationCompact(elapsed))  /  \(formatDurationCompact(targetSec))  \(mark)"
+                let mark = b.effective >= targetSec ? "✓" : "✗"
+                title = "\(period.label):  \(timeStr)  /  \(formatDurationCompact(targetSec))  \(mark)"
             }
             let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
             item.isEnabled = false

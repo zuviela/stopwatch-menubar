@@ -1,5 +1,12 @@
 import Foundation
 
+struct PeriodBreakdown {
+    let raw: Int
+    let effective: Int
+    let carryIn: Int
+    let carryOut: Int
+}
+
 final class HistoryStore {
     static let dayShiftHour: Int = 4
 
@@ -74,6 +81,31 @@ final class HistoryStore {
             total += arr[hour]
         }
         return total
+    }
+
+    func periodBreakdown(on date: Date) -> [Period: PeriodBreakdown] {
+        let order: [Period] = [.morning, .afternoon, .night]
+        var result: [Period: PeriodBreakdown] = [:]
+        var carry = 0
+        for period in order {
+            let raw = seconds(forPeriod: period, on: date)
+            let target = Preferences.shared.targetMinutes(for: period) * 60
+            let available = raw + carry
+            let carryOut: Int
+            if target > 0 && available > target {
+                carryOut = available - target
+            } else {
+                carryOut = 0
+            }
+            result[period] = PeriodBreakdown(
+                raw: raw,
+                effective: available,
+                carryIn: carry,
+                carryOut: carryOut
+            )
+            carry = (period == .night) ? 0 : carryOut
+        }
+        return result
     }
 
     func entries(forMonth month: Date) -> [Date: Int] {
