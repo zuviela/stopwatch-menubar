@@ -571,7 +571,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let title: String
         switch format {
         case .hm:
-            title = stopwatch.isRunning ? "● \(time)" : time
+            title = stopwatch.isRunning ? time : "⏸ \(time)"
         case .hms:
             title = time
         }
