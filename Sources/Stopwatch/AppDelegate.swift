@@ -67,10 +67,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         seedAchievementState()
         installScrollMonitor()
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-            self?.fireFirework(style: .grand)
-        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

@@ -5,18 +5,18 @@ enum FireworkStyle {
     case small
     case grand
 
-    var burstCount: Int { self == .small ? 3 : 4 }
-    var particleRange: ClosedRange<Int> { self == .small ? 8...10 : 12...16 }
-    var startDelayStep: Double { self == .small ? 0.22 : 0.32 }
-    var maxRadiusRange: ClosedRange<Double> { self == .small ? 50...75 : 65...100 }
-    var lifeSpanRange: ClosedRange<Double> { self == .small ? 1.0...1.2 : 1.2...1.5 }
-    var spreadX: Double { self == .small ? 55 : 90 }
-    var spreadY: Double { self == .small ? 20 : 30 }
+    var burstCount: Int { self == .small ? 4 : 4 }
+    var particleRange: ClosedRange<Int> { self == .small ? 8...10 : 14...20 }
+    var startDelayStep: Double { self == .small ? 0.32 : 0.32 }
+    var maxRadiusRange: ClosedRange<Double> { self == .small ? 50...75 : 90...130 }
+    var lifeSpanRange: ClosedRange<Double> { self == .small ? 1.4...1.7 : 1.2...1.5 }
+    var spreadX: Double { self == .small ? 55 : 120 }
+    var spreadY: Double { self == .small ? 20 : 45 }
     var sparkleCount: Int { self == .small ? 0 : 70 }
-    var totalDuration: Double { self == .small ? 1.4 : 2.6 }
-    var displayDuration: TimeInterval { self == .small ? 1.8 : 3.2 }
+    var totalDuration: Double { self == .small ? 2.4 : 2.6 }
+    var displayDuration: TimeInterval { self == .small ? 2.8 : 3.2 }
     var windowSize: CGSize {
-        self == .small ? CGSize(width: 320, height: 180) : CGSize(width: 440, height: 260)
+        self == .small ? CGSize(width: 320, height: 180) : CGSize(width: 560, height: 340)
     }
 
     var palettes: [[Color]] {
@@ -45,7 +45,7 @@ enum FireworkStyle {
     var burstSoundFile: String { self == .small ? "Pop" : "Bottle" }
     var burstSoundTimes: [TimeInterval] {
         switch self {
-        case .small: return [0.0, 0.22]
+        case .small: return [0.0, 0.32, 0.64]
         case .grand: return [0.0, 0.32, 0.64, 0.96]
         }
     }
