@@ -138,11 +138,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let dayKey = HistoryStore.dayKey(for: today)
         achievementCheckDayKey = dayKey
         let breakdown = historyStore.periodBreakdown(on: today)
-        let spilloverOn = Preferences.shared.spilloverEnabled
+        let useEffective = Preferences.shared.spilloverMode != .off
         for period in Period.allCases {
             let target = Preferences.shared.effectiveTargetMinutes(for: period, on: dayKey) * 60
             let b = breakdown[period]
-            let achievedSec = spilloverOn ? (b?.effective ?? 0) : (b?.raw ?? 0)
+            let achievedSec = useEffective ? (b?.effective ?? 0) : (b?.raw ?? 0)
             periodAchievedToday[period] = target > 0 && achievedSec >= target
         }
         let dailyTarget = Preferences.shared.effectiveDailyTargetMinutes(on: dayKey) * 60
@@ -160,12 +160,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let breakdown = historyStore.periodBreakdown(on: today)
-        let spilloverOn = Preferences.shared.spilloverEnabled
+        let useEffective = Preferences.shared.spilloverMode != .off
         for period in Period.allCases {
             let periodTarget = Preferences.shared.effectiveTargetMinutes(for: period, on: dayKey) * 60
             guard periodTarget > 0, !(periodAchievedToday[period] ?? false) else { continue }
             let b = breakdown[period]
-            let achievedSec = spilloverOn ? (b?.effective ?? 0) : (b?.raw ?? 0)
+            let achievedSec = useEffective ? (b?.effective ?? 0) : (b?.raw ?? 0)
             if achievedSec >= periodTarget {
                 periodAchievedToday[period] = true
                 fireFirework(style: .small)
@@ -340,8 +340,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
-    @objc private func toggleSpillover() {
-        Preferences.shared.spilloverEnabled.toggle()
+    private func buildSpilloverSubmenuItem(currentMode: SpilloverMode) -> NSMenuItem {
+        let item = NSMenuItem(title: "Spillover", action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: "Spillover")
+        submenu.autoenablesItems = false
+        for mode in SpilloverMode.allCases {
+            let modeItem = NSMenuItem(
+                title: mode.label,
+                action: #selector(setSpilloverMode(_:)),
+                keyEquivalent: ""
+            )
+            modeItem.target = self
+            modeItem.representedObject = mode.rawValue
+            modeItem.state = (mode == currentMode) ? .on : .off
+            submenu.addItem(modeItem)
+        }
+        item.submenu = submenu
+        return item
+    }
+
+    @objc private func setSpilloverMode(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let mode = SpilloverMode(rawValue: raw) else { return }
+        Preferences.shared.spilloverMode = mode
         seedAchievementState()
     }
 
@@ -453,46 +474,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         submenu.addItem(NSMenuItem.separator())
 
         let breakdown = historyStore.periodBreakdown(on: today)
-        let spilloverOn = Preferences.shared.spilloverEnabled
+        let mode = Preferences.shared.spilloverMode
         let currentPeriod = Period.current(at: today)
         let currentIdx = Period.allCases.firstIndex(of: currentPeriod) ?? 0
         for period in Period.allCases {
             let b = breakdown[period] ?? PeriodBreakdown(raw: 0, effective: 0, carryIn: 0, carryOut: 0)
-            let targetMin = Preferences.shared.effectiveTargetMinutes(for: period, on: dayKey)
-            let targetSec = targetMin * 60
-            let leftArrow = spilloverOn && b.carryIn > 0 ? "← " : ""
-            let rightArrow = spilloverOn && b.carryOut > 0 ? " →" : ""
+            let originalTargetMin = Preferences.shared.effectiveTargetMinutes(for: period, on: dayKey)
+            let originalTargetSec = originalTargetMin * 60
+
+            var leftArrowOnTime = ""
+            var rightArrowOnTime = ""
+            var leftArrowOnTarget = ""
             let displaySec: Int
+            let displayTargetSec: Int
             let achievedSec: Int
-            if spilloverOn {
+
+            switch mode {
+            case .off:
+                displaySec = b.raw
+                displayTargetSec = originalTargetSec
+                achievedSec = b.raw
+            case .cumulative:
                 let periodIdx = Period.allCases.firstIndex(of: period) ?? 0
                 displaySec = periodIdx <= currentIdx ? b.effective : b.raw
+                displayTargetSec = originalTargetSec
+                leftArrowOnTime = b.carryIn > 0 ? "← " : ""
+                rightArrowOnTime = b.carryOut > 0 ? " →" : ""
                 achievedSec = b.effective
-            } else {
+            case .credit:
                 displaySec = b.raw
-                achievedSec = b.raw
+                displayTargetSec = max(0, originalTargetSec - b.carryIn)
+                rightArrowOnTime = b.carryOut > 0 ? " →" : ""
+                leftArrowOnTarget = b.carryIn > 0 ? " ←" : ""
+                achievedSec = b.effective
             }
-            let timeStr = "\(leftArrow)\(formatDurationCompact(displaySec))\(rightArrow)"
+
+            let timeStr = "\(leftArrowOnTime)\(formatDurationCompact(displaySec))\(rightArrowOnTime)"
             let title: String
-            if targetMin == 0 {
+            if originalTargetMin == 0 {
                 title = "\(period.label):  \(timeStr)  /  not set"
             } else {
-                let mark = achievedSec >= targetSec ? "✓" : "✗"
-                title = "\(period.label):  \(timeStr)  /  \(formatDurationCompact(targetSec))  \(mark)"
+                let mark = achievedSec >= originalTargetSec ? "✓" : "✗"
+                let targetStr = "\(formatDurationCompact(displayTargetSec))\(leftArrowOnTarget)"
+                title = "\(period.label):  \(timeStr)  /  \(targetStr)  \(mark)"
             }
             let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
             item.isEnabled = false
             submenu.addItem(item)
         }
         submenu.addItem(NSMenuItem.separator())
-        let spilloverItem = NSMenuItem(
-            title: "Period Spillover",
-            action: #selector(toggleSpillover),
-            keyEquivalent: ""
-        )
-        spilloverItem.target = self
-        spilloverItem.state = spilloverOn ? .on : .off
-        submenu.addItem(spilloverItem)
+        submenu.addItem(buildSpilloverSubmenuItem(currentMode: mode))
         submenu.addItem(NSMenuItem.separator())
         let setTitle = isLocked ? "Set Targets… (locked until 4 AM)" : "Set Targets…"
         let setItem = NSMenuItem(

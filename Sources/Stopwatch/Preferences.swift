@@ -12,6 +12,20 @@ enum DisplayFormat: String, CaseIterable {
     }
 }
 
+enum SpilloverMode: String, CaseIterable {
+    case off
+    case cumulative
+    case credit
+
+    var label: String {
+        switch self {
+        case .off:        return "Off"
+        case .cumulative: return "Add to next period"
+        case .credit:     return "Credit toward next period"
+        }
+    }
+}
+
 final class Preferences {
     static let shared = Preferences()
 
@@ -99,12 +113,19 @@ final class Preferences {
         }
     }
 
-    var spilloverEnabled: Bool {
+    var spilloverMode: SpilloverMode {
         get {
-            (defaults.object(forKey: "spilloverEnabled") as? Bool) ?? true
+            if let raw = defaults.string(forKey: "spilloverMode"),
+               let mode = SpilloverMode(rawValue: raw) {
+                return mode
+            }
+            if let legacy = defaults.object(forKey: "spilloverEnabled") as? Bool {
+                return legacy ? .cumulative : .off
+            }
+            return .cumulative
         }
         set {
-            defaults.set(newValue, forKey: "spilloverEnabled")
+            defaults.set(newValue.rawValue, forKey: "spilloverMode")
         }
     }
 
