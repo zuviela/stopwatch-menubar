@@ -13,10 +13,10 @@ enum FireworkStyle {
     var spreadX: Double { self == .small ? 55 : 120 }
     var spreadY: Double { self == .small ? 20 : 45 }
     var sparkleCount: Int { self == .small ? 0 : 70 }
-    var totalDuration: Double { self == .small ? 2.4 : 2.6 }
-    var displayDuration: TimeInterval { self == .small ? 2.8 : 3.2 }
+    var totalDuration: Double { self == .small ? 2.4 : 4.0 }
+    var displayDuration: TimeInterval { self == .small ? 2.8 : 4.5 }
     var windowSize: CGSize {
-        self == .small ? CGSize(width: 320, height: 180) : CGSize(width: 560, height: 340)
+        CGSize(width: 320, height: 180)
     }
 
     var palettes: [[Color]] {
@@ -46,7 +46,7 @@ enum FireworkStyle {
     var burstSoundTimes: [TimeInterval] {
         switch self {
         case .small: return [0.0, 0.32, 0.64]
-        case .grand: return [0.0, 0.32, 0.64, 0.96]
+        case .grand: return [0.0, 0.28, 0.56, 0.84, 1.4, 2.0]
         }
     }
     var trailingSound: (name: String, delay: TimeInterval)? {
@@ -76,26 +76,39 @@ struct FireworkView: View {
     let style: FireworkStyle
     private let bursts: [Burst]
     private let sparkles: [Sparkle]
-    private let pixelSize: CGFloat = 8
+    private let pixelSize: CGFloat
     private let frameRate: Double = 12
     @State private var startTime = Date()
 
-    init(style: FireworkStyle) {
+    init(style: FireworkStyle, canvasSize: CGSize) {
         self.style = style
         let palettes = style.palettes
+        let isGrand = (style == .grand)
+
+        let spreadX: Double = isGrand ? Double(canvasSize.width) * 0.42 : style.spreadX
+        let spreadY: Double = isGrand ? Double(canvasSize.height) * 0.32 : style.spreadY
+        let maxRadiusRange: ClosedRange<Double> = isGrand
+            ? (Double(canvasSize.height) * 0.16)...(Double(canvasSize.height) * 0.30)
+            : style.maxRadiusRange
+        let burstCount: Int = isGrand ? 8 : style.burstCount
+        let particleRange: ClosedRange<Int> = isGrand ? 22...32 : style.particleRange
+        let startDelayStep: Double = isGrand ? 0.28 : style.startDelayStep
+        let lifeSpanRange: ClosedRange<Double> = isGrand ? 1.6...2.2 : style.lifeSpanRange
+        self.pixelSize = isGrand ? 14 : 8
+
         var burstList: [Burst] = []
-        for i in 0..<style.burstCount {
+        for i in 0..<burstCount {
             burstList.append(Burst(
                 centerOffset: CGPoint(
-                    x: .random(in: -style.spreadX...style.spreadX),
-                    y: .random(in: -10...style.spreadY)
+                    x: .random(in: -spreadX...spreadX),
+                    y: .random(in: -spreadY...spreadY)
                 ),
                 colors: palettes.randomElement() ?? [.white],
-                particleCount: Int.random(in: style.particleRange),
-                startDelay: Double(i) * style.startDelayStep,
-                maxRadius: .random(in: style.maxRadiusRange),
+                particleCount: Int.random(in: particleRange),
+                startDelay: Double(i) * startDelayStep,
+                maxRadius: .random(in: maxRadiusRange),
                 angleJitter: .random(in: 0...(2 * .pi)),
-                lifeSpan: .random(in: style.lifeSpanRange)
+                lifeSpan: .random(in: lifeSpanRange)
             ))
         }
         bursts = burstList
@@ -104,17 +117,20 @@ struct FireworkView: View {
             .yellow, .white, .orange, .red, .cyan,
             Color(red: 1.0, green: 0.8, blue: 0.4)
         ]
+        let sparkleSpreadX: Double = isGrand ? Double(canvasSize.width) * 0.45 : 150
+        let sparkleSpreadY: Double = isGrand ? Double(canvasSize.height) * 0.35 : 60
+        let sparkleCount: Int = isGrand ? 220 : style.sparkleCount
         var sparkleList: [Sparkle] = []
-        for _ in 0..<style.sparkleCount {
+        for _ in 0..<sparkleCount {
             sparkleList.append(Sparkle(
                 originOffset: CGPoint(
-                    x: .random(in: -150...150),
-                    y: .random(in: -60...40)
+                    x: .random(in: -sparkleSpreadX...sparkleSpreadX),
+                    y: .random(in: -sparkleSpreadY...(sparkleSpreadY * 0.5))
                 ),
                 color: sparkleColors.randomElement() ?? .white,
-                startDelay: .random(in: 0.6...2.0),
+                startDelay: .random(in: 0.6...3.0),
                 fallSpeed: .random(in: 35...90),
-                lifetime: .random(in: 0.7...1.1)
+                lifetime: .random(in: 0.7...1.4)
             ))
         }
         sparkles = sparkleList
@@ -192,10 +208,19 @@ final class FireworkWindowController {
 
     func play(style: FireworkStyle, near anchor: NSRect?) {
         guard let anchor else { return }
-        let size = style.windowSize
-        let originX = anchor.midX - size.width / 2
-        let originY = anchor.minY - size.height
-        let frame = NSRect(x: originX, y: originY, width: size.width, height: size.height)
+        let frame: NSRect
+        switch style {
+        case .small:
+            let size = style.windowSize
+            let originX = anchor.midX - size.width / 2
+            let originY = anchor.minY - size.height
+            frame = NSRect(x: originX, y: originY, width: size.width, height: size.height)
+        case .grand:
+            let anchorPoint = NSPoint(x: anchor.midX, y: anchor.midY)
+            let screen = NSScreen.screens.first(where: { NSPointInRect(anchorPoint, $0.frame) })
+                ?? NSScreen.main
+            frame = screen?.frame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        }
 
         let win = NSWindow(
             contentRect: frame,
@@ -209,7 +234,7 @@ final class FireworkWindowController {
         win.hasShadow = false
         win.ignoresMouseEvents = true
         win.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
-        win.contentView = NSHostingView(rootView: FireworkView(style: style))
+        win.contentView = NSHostingView(rootView: FireworkView(style: style, canvasSize: frame.size))
         win.orderFrontRegardless()
 
         window?.orderOut(nil)
