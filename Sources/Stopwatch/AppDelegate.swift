@@ -221,7 +221,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func attemptToggle() {
         stopwatch.toggle()
-        playToggleSound()
+        if stopwatch.isRunning {
+            playStartSound()
+        } else {
+            playStopSound()
+        }
         refreshLabel()
     }
 
@@ -239,8 +243,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         attemptToggle()
     }
 
-    private func playToggleSound() {
+    private func playStartSound() {
         NSSound(named: "Glass")?.play()
+    }
+
+    private func playStopSound() {
+        NSSound(named: "Submarine")?.play()
     }
 
     private func handleIdleDetected() {
@@ -268,7 +276,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
                 if !self.stopwatch.isRunning {
                     self.stopwatch.toggle()
-                    self.playToggleSound()
+                    self.playStartSound()
                 }
             }
             self.refreshLabel()
