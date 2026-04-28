@@ -8,7 +8,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let historyStore = HistoryStore()
     private lazy var historyWindowController = HistoryWindowController(store: historyStore)
     private lazy var targetsWindowController = TargetsWindowController()
-    private let dailyGoalsPromptController = DailyGoalsPromptController()
     private let fireworkController = FireworkWindowController()
     private let idleMonitor = IdleMonitor()
     private let returnPromptController = ReturnPromptController()
@@ -131,23 +130,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func tick() {
         if stopwatch.isRunning {
             let now = Date()
-            ensureGoalsLockedForRunningDay(at: now)
             historyStore.recordSecond(at: now)
             checkForAchievement()
             stopwatch.saveState()
         }
         refreshLabel()
-    }
-
-    private func ensureGoalsLockedForRunningDay(at date: Date) {
-        let dayKey = HistoryStore.dayKey(for: date)
-        guard !Preferences.shared.goalsAreLocked(for: dayKey) else { return }
-        let goals: [Period: Int] = [
-            .morning: Preferences.shared.targetMinutes(for: .morning),
-            .afternoon: Preferences.shared.targetMinutes(for: .afternoon),
-            .night: Preferences.shared.targetMinutes(for: .night)
-        ]
-        Preferences.shared.lockGoals(goals, for: dayKey)
     }
 
     private func seedAchievementState() {
@@ -233,37 +220,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func attemptToggle() {
-        if !stopwatch.isRunning {
-            let dayKey = HistoryStore.dayKey(for: Date())
-            if !Preferences.shared.goalsAreLocked(for: dayKey) {
-                promptForDailyGoals(dayKey: dayKey)
-                return
-            }
-        }
         stopwatch.toggle()
         playToggleSound()
         refreshLabel()
-    }
-
-    private func promptForDailyGoals(dayKey: String) {
-        let prefill: [Period: Int] = [
-            .morning: Preferences.shared.targetMinutes(for: .morning),
-            .afternoon: Preferences.shared.targetMinutes(for: .afternoon),
-            .night: Preferences.shared.targetMinutes(for: .night)
-        ]
-        dailyGoalsPromptController.show(
-            prefill: prefill,
-            dayLabel: "today",
-            onConfirm: { [weak self] goals in
-                guard let self else { return }
-                Preferences.shared.lockGoals(goals, for: dayKey)
-                self.seedAchievementState()
-                self.stopwatch.toggle()
-                self.playToggleSound()
-                self.refreshLabel()
-            },
-            onCancel: { }
-        )
     }
 
     private func cancelPendingIdleReturn() {
@@ -508,7 +467,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             submenu.addItem(item)
         }
         submenu.addItem(NSMenuItem.separator())
-        let setTitle = isLocked ? "Set Targets… (today locked, edits apply tomorrow)" : "Set Targets…"
+        let setTitle = isLocked ? "Set Targets… (locked until 4 AM)" : "Set Targets…"
         let setItem = NSMenuItem(
             title: setTitle,
             action: #selector(showTargets),

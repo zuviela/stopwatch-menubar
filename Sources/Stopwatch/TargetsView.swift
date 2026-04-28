@@ -8,18 +8,23 @@ struct TargetsView: View {
     @State private var afternoonMinutes: Int
     @State private var nightHours: Int
     @State private var nightMinutes: Int
+    @State private var isLocked: Bool
 
     init() {
         let prefs = Preferences.shared
-        let m = prefs.targetMinutes(for: .morning)
-        let a = prefs.targetMinutes(for: .afternoon)
-        let n = prefs.targetMinutes(for: .night)
+        let dayKey = HistoryStore.dayKey(for: Date())
+        let locked = prefs.goalsAreLocked(for: dayKey)
+        let lockedValues = prefs.lockedGoals(for: dayKey)
+        let m = locked ? (lockedValues?[.morning] ?? 0) : prefs.targetMinutes(for: .morning)
+        let a = locked ? (lockedValues?[.afternoon] ?? 0) : prefs.targetMinutes(for: .afternoon)
+        let n = locked ? (lockedValues?[.night] ?? 0) : prefs.targetMinutes(for: .night)
         _morningHours = State(initialValue: m / 60)
         _morningMinutes = State(initialValue: m % 60)
         _afternoonHours = State(initialValue: a / 60)
         _afternoonMinutes = State(initialValue: a % 60)
         _nightHours = State(initialValue: n / 60)
         _nightMinutes = State(initialValue: n % 60)
+        _isLocked = State(initialValue: locked)
     }
 
     private var dailyTotalMinutes: Int {
@@ -36,8 +41,7 @@ struct TargetsView: View {
     }
 
     private var todayLockBannerText: String? {
-        let dayKey = HistoryStore.dayKey(for: Date())
-        guard let locked = Preferences.shared.lockedGoals(for: dayKey) else { return nil }
+        guard isLocked else { return nil }
         func fmt(_ minutes: Int) -> String {
             let h = minutes / 60
             let m = minutes % 60
@@ -45,10 +49,10 @@ struct TargetsView: View {
             if h > 0 { return "\(h)h" }
             return "\(m)m"
         }
-        let m = locked[.morning] ?? 0
-        let a = locked[.afternoon] ?? 0
-        let n = locked[.night] ?? 0
-        return "Today is locked: Morning \(fmt(m)) · Afternoon \(fmt(a)) · Night \(fmt(n)). Changes below apply on your next fresh day."
+        let m = morningHours * 60 + morningMinutes
+        let a = afternoonHours * 60 + afternoonMinutes
+        let n = nightHours * 60 + nightMinutes
+        return "Locked until 4 AM: Morning \(fmt(m)) · Afternoon \(fmt(a)) · Night \(fmt(n)). They'll unlock automatically for the next day."
     }
 
     var body: some View {
@@ -88,18 +92,36 @@ struct TargetsView: View {
                 minutes: $morningMinutes,
                 onChange: { save(.morning, hours: morningHours, minutes: morningMinutes) }
             )
+            .disabled(isLocked)
             row(
                 label: "Afternoon",
                 hours: $afternoonHours,
                 minutes: $afternoonMinutes,
                 onChange: { save(.afternoon, hours: afternoonHours, minutes: afternoonMinutes) }
             )
+            .disabled(isLocked)
             row(
                 label: "Night",
                 hours: $nightHours,
                 minutes: $nightMinutes,
                 onChange: { save(.night, hours: nightHours, minutes: nightMinutes) }
             )
+            .disabled(isLocked)
+
+            Divider()
+
+            HStack {
+                Spacer()
+                if isLocked {
+                    Text("Locked until 4 AM")
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                } else {
+                    Button("Lock targets for today") {
+                        lockToday()
+                    }
+                }
+            }
 
             Spacer(minLength: 0)
         }
@@ -139,7 +161,19 @@ struct TargetsView: View {
     }
 
     private func save(_ period: Period, hours: Int, minutes: Int) {
+        guard !isLocked else { return }
         Preferences.shared.setTargetMinutes(hours * 60 + minutes, for: period)
+    }
+
+    private func lockToday() {
+        let goals: [Period: Int] = [
+            .morning: morningHours * 60 + morningMinutes,
+            .afternoon: afternoonHours * 60 + afternoonMinutes,
+            .night: nightHours * 60 + nightMinutes
+        ]
+        let dayKey = HistoryStore.dayKey(for: Date())
+        Preferences.shared.lockGoals(goals, for: dayKey)
+        isLocked = true
     }
 }
 
