@@ -99,6 +99,15 @@ final class Preferences {
         }
     }
 
+    var spilloverEnabled: Bool {
+        get {
+            (defaults.object(forKey: "spilloverEnabled") as? Bool) ?? true
+        }
+        set {
+            defaults.set(newValue, forKey: "spilloverEnabled")
+        }
+    }
+
     private func targetKey(_ period: Period) -> String {
         "target_\(period.rawValue)_minutes"
     }
