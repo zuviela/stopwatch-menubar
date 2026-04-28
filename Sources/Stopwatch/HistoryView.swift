@@ -4,6 +4,9 @@ import SwiftUI
 struct HistoryView: View {
     let store: HistoryStore
     @State private var displayedMonth: Date = HistoryView.firstDayOfCurrentMonth()
+    @State private var refreshTick: Int = 0
+
+    private let refreshTimer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
 
     var body: some View {
         VStack(spacing: 12) {
@@ -18,6 +21,9 @@ struct HistoryView: View {
         .padding(16)
         .frame(width: 380, height: 360)
         .background(Color(nsColor: .windowBackgroundColor))
+        .onReceive(refreshTimer) { _ in
+            refreshTick &+= 1
+        }
     }
 
     private var header: some View {

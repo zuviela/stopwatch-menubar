@@ -31,7 +31,7 @@ final class HistoryStore {
     private var entries: [String: [Int]] = [:]
     private let storeURL: URL
     private var dirtySinceSave: Int = 0
-    private let saveEvery: Int = 60
+    private let saveEvery: Int = 1
 
     init() {
         let fm = FileManager.default
