@@ -30,26 +30,28 @@ def _measure_text(ctx: cairo.Context, text: str) -> tuple[float, float]:
     return extents.width, extents.height
 
 
-def render_status_image(text: str, scale: int = 2) -> Path:
-    """Render `text` inside a rounded border, return the path of the resulting PNG.
+_TRON_CYAN = (0.30, 0.85, 1.0, 1.0)  # Tron-style light blue
 
-    `scale` raises pixel density so the icon stays crisp on hi-dpi panels.
+
+def render_status_image(text: str, scale: int = 2) -> Path:
+    """Render `text` as a borderless monospaced label, return the PNG path.
+
+    Matches the visual weight of GNOME's panel clock — no border, minimal
+    padding, just the digits. `scale` raises pixel density for hi-dpi panels.
     """
     ensure_dirs()
     surface_for_measure = cairo.ImageSurface(cairo.FORMAT_ARGB32, 1, 1)
     ctx = cairo.Context(surface_for_measure)
     ctx.select_font_face("Monospace", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
-    point_size = 13.0  # menu-bar-equivalent point size
+    point_size = 11.0
     ctx.set_font_size(point_size * scale)
     text_w, text_h = _measure_text(ctx, text)
 
-    horizontal_padding = 7 * scale
-    vertical_padding = 1.5 * scale
-    line_width = 1 * scale
-    corner_radius = 4 * scale
+    horizontal_padding = 2 * scale
+    vertical_padding = 1 * scale
 
-    width = int(text_w + horizontal_padding * 2 + line_width + 1)
-    height = int(text_h + vertical_padding * 2 + line_width + 4)
+    width = int(text_w + horizontal_padding * 2 + 2)
+    height = int(text_h + vertical_padding * 2 + 4)
 
     surface = cairo.ImageSurface(cairo.FORMAT_ARGB32, width, height)
     ctx = cairo.Context(surface)
@@ -58,28 +60,11 @@ def render_status_image(text: str, scale: int = 2) -> Path:
     ctx.set_source_rgba(0, 0, 0, 0)
     ctx.paint()
 
-    # Rounded border
-    x = line_width / 2
-    y = line_width / 2
-    w = width - line_width
-    h = height - line_width
-    r = corner_radius
-    ctx.new_path()
-    ctx.arc(x + r, y + r, r, 3.14159, 1.5 * 3.14159)
-    ctx.arc(x + w - r, y + r, r, 1.5 * 3.14159, 0)
-    ctx.arc(x + w - r, y + h - r, r, 0, 0.5 * 3.14159)
-    ctx.arc(x + r, y + h - r, r, 0.5 * 3.14159, 3.14159)
-    ctx.close_path()
-    ctx.set_source_rgba(1, 1, 1, 1)  # white = visible on GNOME's dark panel
-    ctx.set_line_width(line_width)
-    ctx.stroke()
-
-    # Centered text
     extents = ctx.text_extents(text)
     text_x = (width - extents.width) / 2 - extents.x_bearing
     text_y = (height + extents.height) / 2 - extents.y_bearing - extents.height
     ctx.move_to(text_x, text_y)
-    ctx.set_source_rgba(1, 1, 1, 1)
+    ctx.set_source_rgba(*_TRON_CYAN)
     ctx.show_text(text)
 
     ICONS_DIR.mkdir(parents=True, exist_ok=True)

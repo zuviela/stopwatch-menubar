@@ -48,7 +48,8 @@ class TargetsWindow:
         explainer = Gtk.Label(
             label=(
                 "Set 0 to disable a period. The daily total auto-sums the three "
-                "periods. Periods are 5 AM–noon, noon–6 PM, and 6 PM–5 AM."
+                "periods — when met it fires a big firework; each period fires a "
+                "smaller one. Periods are 5 AM–noon, noon–6 PM, and 6 PM–5 AM."
             )
         )
         explainer.set_line_wrap(True)
@@ -121,8 +122,21 @@ class TargetsWindow:
         self._update_daily_label()
 
         if is_locked and self._banner_label:
+            def fmt(minutes: int) -> str:
+                h, m = minutes // 60, minutes % 60
+                if h > 0 and m > 0:
+                    return f"{h}h{m}m"
+                if h > 0:
+                    return f"{h}h"
+                return f"{m}m"
+            parts = [
+                f"{period.label} {fmt(locked_values.get(period, 0))}"
+                for period in Period.ordered()
+            ]
             self._banner_label.set_markup(
-                "<span size='small'>Locked until 4 AM. Targets unlock automatically for the next day.</span>"
+                "<span size='small'>Locked until 4 AM: "
+                + " · ".join(parts)
+                + ". They'll unlock automatically for the next day.</span>"
             )
             self._banner_label.show()
         elif self._banner_label:

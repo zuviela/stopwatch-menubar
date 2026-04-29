@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import signal
 from datetime import datetime
 from typing import Optional
 
@@ -72,7 +71,6 @@ class StopwatchApp:
     # ---------- Lifecycle ----------
 
     def run(self) -> None:
-        signal.signal(signal.SIGINT, lambda *_: self._quit())
         self._refresh_label()
         self.tray.set_menu(self._build_menu())
         GLib.timeout_add(1000, self._tick)
@@ -96,6 +94,7 @@ class StopwatchApp:
             self._check_for_achievement()
             self.stopwatch.save_state()
         self._refresh_label()
+        self.tray.set_menu(self._build_menu())
         return True
 
     def _refresh_label(self) -> None:
@@ -152,22 +151,21 @@ class StopwatchApp:
             buttons=Gtk.ButtonsType.NONE,
             text="Welcome back",
         )
-        mins = extra_away // 60
         dialog.format_secondary_text(
-            f"You were away for about {mins} minute(s). Count this time?"
+            f"You stepped away for an extra {_format_away(extra_away)} after the timer paused. "
+            "Add that to your tracked time?"
         )
         dialog.add_buttons(
             "Discard", Gtk.ResponseType.NO,
-            "Keep & resume", Gtk.ResponseType.YES,
+            "Keep", Gtk.ResponseType.YES,
         )
+        dialog.set_default_response(Gtk.ResponseType.YES)
         response = dialog.run()
         dialog.destroy()
         if response == Gtk.ResponseType.YES:
+            from datetime import timedelta
             self.stopwatch.add_elapsed(extra_away)
             for i in range(extra_away):
-                # spread the recovered seconds across the away window so the
-                # history view shows them on the right hours
-                from datetime import timedelta
                 self.history.record_second(pause_time + timedelta(seconds=i))
             if not self.stopwatch.is_running:
                 self.stopwatch.toggle()
@@ -413,3 +411,14 @@ class StopwatchApp:
             autostart.enable()
         else:
             autostart.disable()
+
+
+def _format_away(seconds: int) -> str:
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+    if h > 0:
+        return f"{h}h {m}m"
+    if m > 0:
+        return f"{m}m {s}s" if s > 0 else f"{m} min"
+    return f"{s}s"

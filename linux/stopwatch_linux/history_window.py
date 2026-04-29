@@ -6,7 +6,7 @@ from datetime import datetime
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk  # noqa: E402
+from gi.repository import GLib, Gtk  # noqa: E402
 
 from .history import HistoryStore
 
@@ -19,6 +19,7 @@ class HistoryWindow:
         self._month_label: Gtk.Label | None = None
         self._summary_label: Gtk.Label | None = None
         self._grid: Gtk.Grid | None = None
+        self._refresh_timeout_id: int | None = None
 
     def show(self) -> None:
         if self._window is None:
@@ -26,6 +27,20 @@ class HistoryWindow:
         self._refresh()
         self._window.show_all()
         self._window.present()
+        self._start_refresh_timer()
+
+    def _start_refresh_timer(self) -> None:
+        self._stop_refresh_timer()
+        self._refresh_timeout_id = GLib.timeout_add(1000, self._on_refresh_tick)
+
+    def _stop_refresh_timer(self) -> None:
+        if self._refresh_timeout_id is not None:
+            GLib.source_remove(self._refresh_timeout_id)
+            self._refresh_timeout_id = None
+
+    def _on_refresh_tick(self) -> bool:
+        self._refresh()
+        return True
 
     def _build(self) -> Gtk.Window:
         win = Gtk.Window(title="Tally History")
@@ -76,6 +91,7 @@ class HistoryWindow:
         return win
 
     def _shift_month(self, delta: int) -> None:
+        self._start_refresh_timer()
         m = self._displayed_month
         new_month_index = m.month + delta
         new_year = m.year + (new_month_index - 1) // 12
@@ -162,5 +178,6 @@ class HistoryWindow:
             )
 
     def _on_close(self, win, _event):
+        self._stop_refresh_timer()
         win.hide()
         return True

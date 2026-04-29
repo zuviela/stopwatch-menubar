@@ -38,9 +38,9 @@ class Preferences:
     def display_format(self) -> DisplayFormat:
         raw = self.store.get(self.DISPLAY_FORMAT_KEY)
         try:
-            return DisplayFormat(raw) if raw else DisplayFormat.HMS
+            return DisplayFormat(raw) if raw else DisplayFormat.HM
         except ValueError:
-            return DisplayFormat.HMS
+            return DisplayFormat.HM
 
     @display_format.setter
     def display_format(self, value: DisplayFormat) -> None:

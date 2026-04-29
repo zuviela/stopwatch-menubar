@@ -30,7 +30,7 @@ def day_key(date: datetime) -> str:
 
 
 class HistoryStore:
-    SAVE_EVERY = 60
+    SAVE_EVERY = 1
 
     def __init__(self):
         self.entries: dict[str, list[int]] = {}
