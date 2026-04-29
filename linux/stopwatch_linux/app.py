@@ -94,7 +94,10 @@ class StopwatchApp:
             self._check_for_achievement()
             self.stopwatch.save_state()
         self._refresh_label()
-        self.tray.set_menu(self._build_menu())
+        # Don't rebuild the tray menu here — calling set_menu while the user
+        # has the menu open would close and re-open it on every tick under
+        # AppIndicator. The menu is rebuilt on user actions (toggle, reset,
+        # display/idle changes, etc.), which keeps it fresh enough.
         return True
 
     def _refresh_label(self) -> None:
