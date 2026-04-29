@@ -66,6 +66,8 @@ class _StyleParams:
     display_duration: float
     window_w: int
     window_h: int
+    pixel_size: int
+    fullscreen: bool
     palettes: list[list[tuple[float, float, float]]]
     burst_sound_times: list[float]
     burst_sound_name: str  # see audio_assets.POP / BOTTLE
@@ -85,36 +87,8 @@ _PINK = (1.0, 0.55, 0.78)
 _BLUE = (0.0, 0.48, 1.0)
 
 
+# "Small" period firework — visuals match what used to be the grand burst.
 _SMALL = _StyleParams(
-    burst_count=3,
-    particle_min=8,
-    particle_max=10,
-    start_delay_step=0.22,
-    radius_min=50.0,
-    radius_max=75.0,
-    life_min=1.0,
-    life_max=1.2,
-    spread_x=55.0,
-    spread_y=20.0,
-    sparkle_count=0,
-    total_duration=1.4,
-    display_duration=1.8,
-    window_w=320,
-    window_h=180,
-    palettes=[
-        [_RED, _YELLOW],
-        [_CYAN, _WHITE],
-        [_GREEN, _YELLOW],
-        [_PINK_RED, _WHITE],
-        [_ORANGE, _YELLOW],
-        [_PURPLE, _PINK],
-    ],
-    burst_sound_times=[0.0, 0.22],
-    burst_sound_name=audio_assets.POP,
-)
-
-
-_GRAND = _StyleParams(
     burst_count=4,
     particle_min=12,
     particle_max=16,
@@ -130,6 +104,8 @@ _GRAND = _StyleParams(
     display_duration=3.2,
     window_w=440,
     window_h=260,
+    pixel_size=8,
+    fullscreen=False,
     palettes=[
         [_RED, _YELLOW, _WHITE],
         [_CYAN, _WHITE, _BLUE],
@@ -143,8 +119,66 @@ _GRAND = _StyleParams(
 )
 
 
-def _params_for(style: FireworkStyle) -> _StyleParams:
-    return _GRAND if style is FireworkStyle.GRAND else _SMALL
+def _grand_params(geom) -> _StyleParams:
+    """Daily-goal firework scaled to the active monitor — a screenful of bursts."""
+    w = max(1, int(geom.width))
+    h = max(1, int(geom.height))
+    minor = min(w, h)
+    return _StyleParams(
+        burst_count=10,
+        particle_min=24,
+        particle_max=32,
+        start_delay_step=0.32,
+        radius_min=minor * 0.12,
+        radius_max=minor * 0.22,
+        life_min=1.6,
+        life_max=2.2,
+        spread_x=w * 0.42,
+        spread_y=h * 0.32,
+        sparkle_count=300,
+        total_duration=5.0,
+        display_duration=5.5,
+        window_w=w,
+        window_h=h,
+        # Bigger pixels on a fullscreen canvas keep the chunky look readable.
+        pixel_size=max(10, int(minor * 0.012)),
+        fullscreen=True,
+        palettes=[
+            [_RED, _YELLOW, _WHITE],
+            [_CYAN, _WHITE, _BLUE],
+            [_GREEN, _YELLOW, _WHITE],
+            [_PINK_RED, _WHITE, _YELLOW],
+            [_ORANGE, _YELLOW, _RED],
+            [_PURPLE, _PINK, _WHITE],
+        ],
+        burst_sound_times=[0.0, 0.32, 0.64, 0.96, 1.28, 1.60, 1.92],
+        burst_sound_name=audio_assets.BOTTLE,
+    )
+
+
+def _params_for(style: FireworkStyle, monitor_geom=None) -> _StyleParams:
+    if style is FireworkStyle.GRAND:
+        if monitor_geom is None:
+            monitor_geom = _primary_monitor_geom()
+        return _grand_params(monitor_geom)
+    return _SMALL
+
+
+def _primary_monitor_geom():
+    display = Gdk.Display.get_default()
+    if display is None:
+        # Synthetic 1920x1080 if there's no display (shouldn't happen in practice).
+        class _Fake:
+            x = y = 0
+            width, height = 1920, 1080
+        return _Fake()
+    monitor = display.get_primary_monitor() or display.get_monitor(0)
+    if monitor is None:
+        class _Fake:
+            x = y = 0
+            width, height = 1920, 1080
+        return _Fake()
+    return monitor.get_geometry()
 
 
 # ---------- Particle geometry ----------
@@ -210,16 +244,21 @@ def _build_sparkles(p: _StyleParams) -> list[_Sparkle]:
 
 # ---------- Window ----------
 
-_PIXEL_SIZE = 8
 _FRAME_RATE = 12  # 12 fps animation matches the SwiftUI version's stepped look
 _FRAME_INTERVAL_MS = int(1000 / _FRAME_RATE)
 
 
 class _FireworkWindow(Gtk.Window):
-    def __init__(self, style: FireworkStyle, anchor_x: int, anchor_y: int):
+    def __init__(
+        self,
+        style: FireworkStyle,
+        anchor_x: int,
+        anchor_y: int,
+        monitor_geom=None,
+    ):
         super().__init__(type=Gtk.WindowType.POPUP)
         self._style = style
-        self._params = _params_for(style)
+        self._params = _params_for(style, monitor_geom)
         self._bursts = _build_bursts(self._params)
         self._sparkles = _build_sparkles(self._params)
         self._start_time = time.monotonic()
@@ -243,10 +282,14 @@ class _FireworkWindow(Gtk.Window):
             self.set_visual(visual)
 
         self.set_default_size(self._params.window_w, self._params.window_h)
-        self.move(
-            anchor_x - self._params.window_w // 2,
-            max(0, anchor_y),
-        )
+        if self._params.fullscreen and monitor_geom is not None:
+            # Cover the full monitor — top-left corner of its geometry.
+            self.move(monitor_geom.x, monitor_geom.y)
+        else:
+            self.move(
+                anchor_x - self._params.window_w // 2,
+                max(0, anchor_y),
+            )
 
         self._image = Gtk.Image()
         self.add(self._image)
@@ -394,9 +437,10 @@ class _FireworkWindow(Gtk.Window):
         color: tuple[float, float, float],
         alpha: float,
     ) -> None:
-        snapped_x = math.floor(x / _PIXEL_SIZE) * _PIXEL_SIZE
-        snapped_y = math.floor(y / _PIXEL_SIZE) * _PIXEL_SIZE
-        ctx.rectangle(snapped_x, snapped_y, _PIXEL_SIZE, _PIXEL_SIZE)
+        size = self._params.pixel_size
+        snapped_x = math.floor(x / size) * size
+        snapped_y = math.floor(y / size) * size
+        ctx.rectangle(snapped_x, snapped_y, size, size)
         ctx.set_source_rgba(color[0], color[1], color[2], alpha)
         ctx.fill()
 
@@ -462,11 +506,13 @@ class FireworkController:
         except Exception:
             anchor_x, anchor_y = _fallback_anchor()
 
-        win = _FireworkWindow(style, anchor_x, anchor_y)
+        monitor_geom = _primary_monitor_geom() if style is FireworkStyle.GRAND else None
+
+        win = _FireworkWindow(style, anchor_x, anchor_y, monitor_geom)
         win.connect("destroy", self._on_window_destroyed)
         self._current = win
         win.play()
-        params = _params_for(style)
+        params = _params_for(style, monitor_geom)
         _schedule_burst_sounds(params.burst_sound_times, params.burst_sound_name)
 
     def _on_window_destroyed(self, win: Gtk.Window) -> None:
