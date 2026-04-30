@@ -56,6 +56,23 @@ final class HistoryStore {
         }
     }
 
+    func recordSeconds(startingAt start: Date, count: Int) {
+        guard count > 0 else { return }
+        for i in 0..<count {
+            let date = start.addingTimeInterval(TimeInterval(i))
+            let (key, hour) = bucket(for: date)
+            var arr = entries[key] ?? Array(repeating: 0, count: 24)
+            if arr.count != 24 { arr = Array(repeating: 0, count: 24) }
+            arr[hour] += 1
+            entries[key] = arr
+        }
+        dirtySinceSave += count
+        if dirtySinceSave >= saveEvery {
+            save()
+            dirtySinceSave = 0
+        }
+    }
+
     func subtractSecond(at date: Date) {
         let (key, hour) = bucket(for: date)
         guard var arr = entries[key], arr.count == 24, arr[hour] > 0 else { return }

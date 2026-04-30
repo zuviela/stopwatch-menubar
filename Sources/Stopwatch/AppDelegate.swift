@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var refreshTimer: Timer?
     private var pendingToggle: DispatchWorkItem?
     private var idlePauseTimestamp: Date?
+    private var lastRecordedAt: Date?
     private var periodAchievedToday: [Period: Bool] = [:]
     private var dailyAchievedToday: Bool = false
     private var achievementCheckDayKey: String = ""
@@ -126,9 +127,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func tick() {
         if stopwatch.isRunning {
             let now = Date()
-            historyStore.recordSecond(at: now)
+            if let last = lastRecordedAt {
+                let wholeSeconds = Int(now.timeIntervalSince(last))
+                if wholeSeconds > 0 {
+                    historyStore.recordSeconds(startingAt: last, count: wholeSeconds)
+                    lastRecordedAt = last.addingTimeInterval(TimeInterval(wholeSeconds))
+                }
+            } else {
+                lastRecordedAt = now
+            }
             checkForAchievement()
             stopwatch.saveState()
+        } else {
+            lastRecordedAt = nil
         }
         refreshLabel()
     }
