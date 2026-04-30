@@ -18,9 +18,7 @@ struct ReturnPromptView: View {
             HStack {
                 Spacer()
                 Button("Discard") { onChoice(false) }
-                    .keyboardShortcut(.cancelAction)
                 Button("Keep") { onChoice(true) }
-                    .keyboardShortcut(.defaultAction)
             }
             .padding(.top, 2)
         }
@@ -40,18 +38,14 @@ struct ReturnPromptView: View {
     }
 }
 
-private final class PromptPanelWindow: NSWindow {
+private final class PromptPanelWindow: NSPanel {
     override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { true }
+    override var canBecomeMain: Bool { false }
 }
 
 final class ReturnPromptController: NSObject {
     private var window: PromptPanelWindow?
     private var pendingHandler: ((Bool) -> Void)?
-    private var globalMouseMonitor: Any?
-    private var localMouseMonitor: Any?
-    private var localKeyMonitor: Any?
-    private var resignKeyObserver: NSObjectProtocol?
 
     func show(
         extraAwaySeconds: Int,
@@ -85,7 +79,7 @@ final class ReturnPromptController: NSObject {
 
         let win = PromptPanelWindow(
             contentRect: frame,
-            styleMask: [.borderless],
+            styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
@@ -94,7 +88,9 @@ final class ReturnPromptController: NSObject {
         win.hasShadow = true
         win.level = .popUpMenu
         win.isReleasedWhenClosed = false
-        win.collectionBehavior = [.transient, .ignoresCycle]
+        win.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+        win.hidesOnDeactivate = false
+        win.becomesKeyOnlyIfNeeded = true
         win.animationBehavior = .utilityWindow
 
         let veView = NSVisualEffectView(frame: NSRect(origin: .zero, size: frame.size))
@@ -113,62 +109,12 @@ final class ReturnPromptController: NSObject {
 
         window = win
 
-        NSApp.activate(ignoringOtherApps: true)
-        win.makeKeyAndOrderFront(nil)
-
-        installEventMonitors()
+        win.orderFrontRegardless()
     }
 
     func close() {
-        if let m = globalMouseMonitor { NSEvent.removeMonitor(m) }
-        if let m = localMouseMonitor { NSEvent.removeMonitor(m) }
-        if let m = localKeyMonitor { NSEvent.removeMonitor(m) }
-        globalMouseMonitor = nil
-        localMouseMonitor = nil
-        localKeyMonitor = nil
-
-        if let observer = resignKeyObserver {
-            NotificationCenter.default.removeObserver(observer)
-            resignKeyObserver = nil
-        }
-
         window?.orderOut(nil)
         window = nil
-    }
-
-    private func installEventMonitors() {
-        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
-        ) { [weak self] _ in
-            self?.dismissAsDiscard()
-        }
-
-        localMouseMonitor = NSEvent.addLocalMonitorForEvents(
-            matching: [.leftMouseDown, .rightMouseDown]
-        ) { [weak self] event in
-            if event.window !== self?.window {
-                self?.dismissAsDiscard()
-            }
-            return event
-        }
-
-        localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
-            if event.keyCode == 53 {
-                self?.handleChoice(false)
-                return nil
-            }
-            return event
-        }
-
-        if let win = window {
-            resignKeyObserver = NotificationCenter.default.addObserver(
-                forName: NSWindow.didResignKeyNotification,
-                object: win,
-                queue: .main
-            ) { [weak self] _ in
-                self?.dismissAsDiscard()
-            }
-        }
     }
 
     private func handleChoice(_ keep: Bool) {
