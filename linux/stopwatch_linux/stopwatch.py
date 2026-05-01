@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
 from typing import Optional
 
 from .preferences import DisplayFormat
@@ -10,13 +11,17 @@ from .storage import JSONStore, PREFS_PATH
 class StopwatchTimer:
     ELAPSED_KEY = "stopwatch.savedElapsedSeconds"
     LAST_CYCLE_KEY = "stopwatch.savedLastCycleSeconds"
+    DAY_KEY_KEY = "stopwatch.savedDayKey"
+    NOTIFIED_DAY_KEY = "stopwatch.notifiedDayKey"
 
     def __init__(self):
         self.store = JSONStore(PREFS_PATH)
         self._accumulated: float = 0.0
         self._running_since: Optional[float] = None
         self._last_cycle: Optional[int] = None
+        self._saved_day_key: Optional[str] = None
         self._load_state()
+        self.rollover_if_new_day()
 
     @property
     def is_running(self) -> bool:
@@ -63,12 +68,44 @@ class StopwatchTimer:
         self._accumulated = max(0.0, self._accumulated - max(0, int(seconds)))
         self.save_state()
 
+    def rollover_if_new_day(self) -> tuple[bool, int]:
+        # Imported here to avoid a circular import (history -> preferences -> stopwatch)
+        from .history import day_key
+
+        today = day_key(datetime.now())
+        if self._saved_day_key is None:
+            self._saved_day_key = today
+            self.save_state()
+            return False, 0
+        if self._saved_day_key == today:
+            return False, 0
+        previous = self.elapsed_seconds
+        if previous > 0:
+            self._last_cycle = previous
+        self._accumulated = 0.0
+        if self._running_since is not None:
+            self._running_since = time.time()
+        self._saved_day_key = today
+        self.save_state()
+        return True, previous
+
+    @property
+    def notified_day_key(self) -> Optional[str]:
+        raw = self.store.get(self.NOTIFIED_DAY_KEY)
+        return raw if isinstance(raw, str) else None
+
+    @notified_day_key.setter
+    def notified_day_key(self, value: str) -> None:
+        self.store.set(self.NOTIFIED_DAY_KEY, value)
+
     def save_state(self) -> None:
         self.store.set(self.ELAPSED_KEY, self.elapsed_seconds)
         if self._last_cycle is not None:
             self.store.set(self.LAST_CYCLE_KEY, self._last_cycle)
         else:
             self.store.remove(self.LAST_CYCLE_KEY)
+        if self._saved_day_key is not None:
+            self.store.set(self.DAY_KEY_KEY, self._saved_day_key)
 
     def _load_state(self) -> None:
         saved = self.store.get(self.ELAPSED_KEY, 0)
@@ -81,6 +118,9 @@ class StopwatchTimer:
                 self._last_cycle = int(self.store.get(self.LAST_CYCLE_KEY))
             except (TypeError, ValueError):
                 self._last_cycle = None
+        raw_day = self.store.get(self.DAY_KEY_KEY)
+        if isinstance(raw_day, str):
+            self._saved_day_key = raw_day
 
 
 def format_elapsed(seconds: int, fmt: DisplayFormat) -> str:

@@ -1,11 +1,19 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 import gi
 
 gi.require_version("Gtk", "3.0")
+try:
+    gi.require_version("Notify", "0.7")
+    from gi.repository import Notify  # noqa: E402
+
+    _NOTIFY_AVAILABLE = True
+except (ValueError, ImportError):
+    Notify = None  # type: ignore[assignment]
+    _NOTIFY_AVAILABLE = False
 from gi.repository import GLib, Gtk  # noqa: E402
 
 from . import autostart, sound
@@ -68,6 +76,12 @@ class StopwatchApp:
         self._daily_achieved: bool = False
         self._achievement_day_key: str = ""
 
+        if _NOTIFY_AVAILABLE:
+            try:
+                Notify.init("Tally")
+            except Exception:
+                pass
+
     # ---------- Lifecycle ----------
 
     def run(self) -> None:
@@ -89,6 +103,7 @@ class StopwatchApp:
     # ---------- Tick / display ----------
 
     def _tick(self) -> bool:
+        rolled, _ = self.stopwatch.rollover_if_new_day()
         if self.stopwatch.is_running:
             self.history.record_second()
             self._check_for_achievement()
@@ -98,6 +113,10 @@ class StopwatchApp:
         # has the menu open would close and re-open it on every tick under
         # AppIndicator. The menu is rebuilt on user actions (toggle, reset,
         # display/idle changes, etc.), which keeps it fresh enough.
+        # Exception: a 4 AM rollover changes "Undo Reset" availability and the
+        # Targets submenu's locked state, so refresh once when that fires.
+        if rolled:
+            self.tray.set_menu(self._build_menu())
         return True
 
     def _refresh_label(self) -> None:
@@ -114,8 +133,11 @@ class StopwatchApp:
 
     def _on_left_click(self) -> None:
         self._cancel_pending_idle_return()
+        was_running = self.stopwatch.is_running
         self.stopwatch.toggle()
         sound.play_toggle()
+        if not was_running and self.stopwatch.is_running:
+            self._maybe_notify_day_start()
         self._refresh_label()
         self.tray.set_menu(self._build_menu())
 
@@ -215,6 +237,34 @@ class StopwatchApp:
             if self.history.seconds_for_day(today) >= daily_target:
                 self._daily_achieved = True
                 self.fireworks.play(FireworkStyle.GRAND)
+
+    def _maybe_notify_day_start(self) -> None:
+        today = datetime.now()
+        today_key = day_key(today)
+        if self.stopwatch.notified_day_key == today_key:
+            return
+        # Stamp first so a notification failure doesn't get re-tried every click.
+        self.stopwatch.notified_day_key = today_key
+
+        yesterday_secs = self.history.seconds_for_day(today - timedelta(days=1))
+        target_min = Preferences.shared().effective_daily_target_minutes(today_key)
+        target_secs = target_min * 60
+
+        parts: list[str] = []
+        if yesterday_secs > 0:
+            parts.append(f"Yesterday: {format_duration_compact(yesterday_secs)}")
+        if target_secs > 0:
+            parts.append(f"Today's goal: {format_duration_compact(target_secs)}")
+        body = " · ".join(parts) if parts else "Fresh day, fresh start."
+
+        if not _NOTIFY_AVAILABLE:
+            return
+        try:
+            n = Notify.Notification.new("Tally — new day", body)
+            n.set_timeout(8000)
+            n.show()
+        except Exception:
+            pass
 
     def _firework_anchor(self) -> tuple[int, int]:
         anchor = self.tray.get_anchor_below()
